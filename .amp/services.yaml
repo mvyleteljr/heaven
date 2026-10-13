@@ -1,0 +1,9 @@
+services:
+  frontier:
+    command: cargo run --locked
+    port: 3000
+    health: /api/health
+    portal:
+      url: /
+      title: Frontier · Autonomous worlds
+      description: Create a scripted or live OpenRouter experiment, inspect evidence, and branch a checkpoint.

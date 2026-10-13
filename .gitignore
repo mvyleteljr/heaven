@@ -1,0 +1,6 @@
+/target/
+/data/
+/.amp/in/
+/.amp/portals/
+.env
+*.sqlite*
