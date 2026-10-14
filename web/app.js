@@ -61,6 +61,12 @@ async function act(fn) {
 let models = [];
 let prompts;
 let editingPrompt = null;
+let institutionDefinition = null;
+let seedExperiment = null;
+const institutionTemplate = (experiment = $("#experiment").value) =>
+  experiment === "institutions" ? "accounts" : experiment === "harbor_onto" ? "harbor" : null;
+const experimentName = (experiment) =>
+  ({ bellwether: "Harbor Works", institutions: "Onto · Accounts", harbor_onto: "Onto · Harbor Works", flowers: "Flowers for Friday" })[experiment] ?? "World trace";
 const settingIds = [
   "experiment",
   "run-name",
@@ -122,7 +128,13 @@ function settingsState() {
   $("#mode option[value='true']").disabled =
     $("#experiment").value !== "flowers";
   capabilities();
-  $("#new").disabled = !!id || pending || !!editingPrompt;
+  const onto = institutionTemplate();
+  const runtimeUnavailable = !id && onto && seed?.runtime_available === false;
+  $("#new").disabled = !!id || pending || !!editingPrompt || !!runtimeUnavailable;
+  $("#institution-source").readOnly = !!id || pending || onto === "harbor";
+  $("#institution-file").disabled = pending;
+  for (const field of ["institution-actor", "institution-epoch"])
+    $("#" + field).disabled = !!id || pending || onto === "harbor";
   $("#runs").disabled = pending || !!editingPrompt;
   document.querySelectorAll(".edit-prompt").forEach((button) => {
     button.hidden = !!id;
@@ -132,7 +144,11 @@ function settingsState() {
     ? "Working…"
     : id
       ? "Inspecting saved settings · read-only"
-      : "Configure a new run, then validate & save.";
+      : runtimeUnavailable
+        ? "Configure the Onto runtime to validate this model. Other experiments remain available."
+        : onto
+          ? `Validate & save checks the Ontolang model and creates a paused run. Live run ceiling: ${onto === "accounts" ? "$0.25 · 30 actions" : "$1.00 · 100 actions"}.`
+          : "Configure a new run, then validate & save.";
   const working = data?.run.busy || data?.run.status === "running";
   $("#step").disabled = pending || !id || !!working || !!data?.run.world.finished || data?.run.actions >= data?.run.config.action_limit;
   $("#run").disabled = $("#step").disabled;
@@ -175,6 +191,48 @@ function frames() {
     ]
   );
 }
+function modelEditor(definition) {
+  $("#institution-model").hidden = !definition;
+  if (!definition) return;
+  const files = Object.keys(definition.source);
+  const selector = $("#institution-file");
+  const selectedFile = files.includes(selector.value) ? selector.value : files[0];
+  if (Array.from(selector.options, (o) => o.value).join("\n") !== files.join("\n"))
+    selector.replaceChildren(...files.map((file) => new Option(file, file)));
+  selector.value = selectedFile;
+  const source = definition.source[selectedFile] ?? "";
+  if ($("#institution-source").value !== source)
+    $("#institution-source").value = source;
+  $("#institution-actor").value = definition.actor;
+  $("#institution-epoch").value = definition.epoch;
+  $("#institution-status").textContent = id
+    ? "Onto runtime · all model facts are public in this experiment."
+    : seed.runtime_available === false
+      ? `Onto runtime unavailable: ${seed.runtime_error ?? "Run scripts/build-onto.mjs and configure FRONTIER_ONTO_RUNTIME."}`
+      : "Onto runtime ready · all model facts are public in this experiment.";
+  const capabilities = !id ? seed.capabilities : null;
+  $("#institution-capabilities").textContent = capabilities
+    ? typeof capabilities === "string" ? capabilities : pretty(capabilities)
+    : "The host fixes the caller identity and enforces the model's Stories and rules.";
+  $("#institution-source-note").textContent = id
+    ? "Saved model · read-only. Facts and receipts below follow the selected checkpoint."
+    : institutionTemplate() === "harbor"
+      ? "Authored Harbor Works template · read-only. Its counterparties and hosting behavior depend on this model."
+      : "Edit source and caller before validating. The preview below uses the template's initial facts until you validate & save your edits. Money values in stored facts are integer cents.";
+}
+function institutionWorld(ontology, elapsed) {
+  const instances = ontology.snapshot?.instances ?? [];
+  const groups = new Map();
+  for (const instance of instances) {
+    if (!groups.has(instance.type)) groups.set(instance.type, []);
+    groups.get(instance.type).push(instance);
+  }
+  const valueText = (value) => typeof value === "string" ? value : pretty(value);
+  const balances = instances.filter((instance) => Number.isFinite(instance.fields?.balance));
+  const stories = Array.isArray(ontology.stories) ? ontology.stories : [];
+  const receipts = Object.entries(ontology.receipts ?? {});
+  return `<div class="institution-world"><div class="node root"><strong>Onto institution · day ${Math.floor((elapsed ?? 0) / 86400)}</strong><span>Caller: ${esc(ontology.definition.actor)} · ${instances.length} public records · ${receipts.length} command receipts</span></div>${balances.length ? `<div class="institution-balances">${balances.map((instance) => `<div class="node"><strong>${esc(instance.fields.name ?? instance.id)}</strong><span>Balance · ${money(instance.fields.balance)}</span></div>`).join("")}</div>` : ""}${Array.from(groups, ([type, records]) => `<details class="institution-facts" open><summary>${esc(type)} · ${records.length} records</summary>${records.map((instance) => `<div class="node"><strong>${esc(instance.id)}</strong><dl>${Object.entries(instance.fields ?? {}).map(([key, value]) => `<dt>${esc(key)}</dt><dd>${esc(valueText(value))}</dd>`).join("")}</dl></div>`).join("")}</details>`).join("")}<details open><summary>Model Stories · ${stories.length}</summary><p class="field-note">Each Story’s permissions still apply. Some Stories run only through trusted counterparties or service checks.</p>${stories.length ? `<ul>${stories.map((story) => `<li>${esc(story.story ?? story.id)}${story.participants?.length ? `<br><small>Participants: ${esc(story.participants.join(", "))}</small>` : ""}</li>`).join("")}</ul>` : "<p>No single-actor Stories are exposed.</p>"}</details><details open><summary>Command receipts · ${receipts.length}</summary>${receipts.length ? receipts.map(([key, receipt]) => `<details><summary>${esc(key)} · ${receipt.result?.committed === true ? "Committed" : receipt.result?.committed === false ? "Rejected" : "Recorded"}</summary><pre>${esc(pretty(receipt.result))}</pre></details>`).join("") : "<p>No commands yet.</p>"}</details></div>`;
+}
 function render() {
   const fs = frames();
   if (follow) selected = fs.length - 1;
@@ -185,10 +243,19 @@ function render() {
     evidence = frame.event.evidence;
   $("h1").textContent =
     data?.run.name ??
-    (seed.world.business ? "Harbor Works" : "Flowers for Friday");
+    seed.name ?? experimentName($("#experiment").value);
   document.title = `${$("h1").textContent} · World trace`;
+  const definition = id ? frame.world.ontology?.definition : institutionDefinition;
+  modelEditor(definition);
+  $("#experiment-description").textContent = data
+    ? frame.world.ontology
+      ? `${experimentName(data.run.experiment)} · Ontolang owns the institution's facts and rules.`
+      : data.run.experiment === "bellwether" ? "Original Harbor Works · Rust business simulation." : ""
+    : seed.description ?? (seed.world.business ? "Original Harbor Works · Rust business simulation." : "");
   $("#system").textContent = data?.initial.actor_instructions ?? prompts.system;
-  $("#director-policy").textContent = frame.world.business
+  $("#director-policy").textContent = definition
+    ? institutionTemplate() === "harbor" ? "Onto · authored commercial rules, hosting & counterparties" : "Onto · authored account rules & public facts"
+    : frame.world.business
     ? "Bellwether · bounded counterparties & scheduled check-ins"
     : data && !data.run.experiment
       ? "Legacy run · no director"
@@ -214,7 +281,8 @@ function render() {
         .join("\n")
     : configuredTools.split("; ").join("\n");
   $("#seed").textContent = pretty(
-    fs[0].world.business ??
+    fs[0].world.ontology?.snapshot ??
+      fs[0].world.business ??
       fs[0].world.flowers ??
       fs[0].world.tools?.public_resources,
   );
@@ -257,8 +325,12 @@ function render() {
     $("#world").innerHTML =
       `<div class="node root"><strong>Harbor Works · day ${Math.floor(frame.world.tools.elapsed_seconds / 86400)} / 30</strong><span>${money(b.organizations.harbor.cash)} cash · ${contracts.length} agreements · ${accepted.length} accepted · ${paid.length} paid</span></div><div class="branches">${contracts.map((c) => `<div class="node"><strong>${esc(b.organizations[c.buyer].name)}</strong><span>${esc(c.capability)} · ${money(c.price_cents)}<br>${c.paid ? "Paid" : c.accepted ? "Accepted · unpaid" : c.delivered_at !== null ? "Awaiting customer validation" : "Delivery owed"}<br>Due day ${(c.deadline / 86400).toFixed(1)} · ${esc(c.service ?? "No service delivered")}</span></div>`).join("") || '<div class="node missing">No customer agreements yet.</div>'}</div><div class="node"><strong>District · ${Object.keys(b.organizations).length - 1} other organizations</strong><span>${b.checkins} / 4 scheduled check-ins · ${money(b.backup_spent)} spent on alternatives</span></div><details><summary>Public resources · ${Object.keys(frame.world.tools.public_resources).length}</summary>${$("#world").innerHTML}</details>`;
   }
+  if (frame.world.ontology)
+    $("#world").innerHTML = institutionWorld(frame.world.ontology, frame.world.tools?.elapsed_seconds);
+  else if (definition)
+    $("#world").innerHTML = '<div class="node missing">Initial facts will be available when the Onto runtime validates this model.</div>';
   $("#state").textContent = pretty(
-    frame.world.business
+    frame.world.business || frame.world.ontology
       ? frame.world
       : frame.world.tools
         ? { ...w, tools: frame.world.tools }
@@ -326,6 +398,18 @@ function render() {
     ]) {
       if (pretty(before?.[key]) !== pretty(after[key]))
         $("#changes").innerHTML += `<p>${esc(key)} changed.</p>`;
+    }
+  }
+  if (selected && frame.world.ontology) {
+    const before = fs[selected - 1].world.ontology;
+    const changes = [];
+    if (pretty(before?.snapshot) !== pretty(frame.world.ontology.snapshot))
+      changes.push("Institution facts changed.");
+    if (pretty(before?.receipts) !== pretty(frame.world.ontology.receipts))
+      changes.push("Institution command receipts changed.");
+    if (changes.length) {
+      if ($("#changes").innerHTML === "<p>No world state changes.</p>") $("#changes").innerHTML = "";
+      $("#changes").innerHTML += changes.map((change) => `<p>${change}</p>`).join("");
     }
   }
   const priorSeq = selected ? fs[selected - 1].event.seq : 0;
@@ -415,9 +499,14 @@ async function create() {
   for (const key of settingIds)
     if (!$("#" + key).checkValidity())
       throw Error("Check the model settings values.");
-  const bellwether = $("#experiment").value === "bellwether";
-  const r = await api($("#experiment").value, {
-    name: $("#run-name").value,
+  const experiment = $("#experiment").value;
+  if (experiment !== seedExperiment)
+    throw Error("Load this experiment's seed before saving.");
+  const template = institutionTemplate(experiment);
+  const business = experiment === "bellwether" || template === "harbor";
+  if (template && seed.runtime_available === false)
+    throw Error("Configure the Onto runtime before validating this model.");
+  const config = {
     actor_system_prompt: prompts.system,
     actor_user_prompt: prompts.task,
     actor_model: $("#actor").value,
@@ -439,15 +528,18 @@ async function create() {
       reasoning_effort: $("#generator-reasoning").value || null,
     },
     provider: "openai",
-    demo: $("#mode").value === "true",
-    action_limit: bellwether ? 100 : 20,
+    demo: template ? false : $("#mode").value === "true",
+    action_limit: business ? 100 : template ? 30 : 20,
     expansion_limit: 10,
-    call_limit: bellwether ? 120 : 40,
-    dollar_limit: 1,
+    call_limit: business ? 120 : template ? 180 : 40,
+    dollar_limit: template === "accounts" ? 0.25 : 1,
     context_limit_bytes: Number($("#context-limit").value),
     memory: $("#memory-mode").value === "rolling" ? {recent_entries:12,max_summary_bytes:8000} : null,
     structured_actions: $("#action-format").value === "structured",
-  });
+  };
+  const name = $("#run-name").value;
+  const r = await api(template ? "institutions" : experiment,
+    template ? { name, template, config, institution: institutionDefinition } : { name, ...config });
   id = r.id;
   data = null;
   follow = true;
@@ -514,13 +606,35 @@ $("#latest").onclick = () => {
   render();
 };
 async function loadSeed(experiment) {
+  const template = institutionTemplate(experiment);
+  let next;
+  try {
+    next = await api(
+      template ? `institution-seed?template=${template}` : experiment === "bellwether" ? "bellwether-seed" : "flower-seed",
+    );
+  } catch (error) {
+    if (seedExperiment) $("#experiment").value = seedExperiment;
+    throw error;
+  }
   $("#experiment").value = experiment;
-  seed = await api(
-    experiment === "bellwether" ? "bellwether-seed" : "flower-seed",
-  );
+  seedExperiment = experiment;
+  seed = next;
+  institutionDefinition = seed.institution ? structuredClone(seed.institution) : null;
   prompts = { system: seed.system, task: seed.world.goal };
-  if (experiment === "bellwether") $("#mode").value = "false";
+  if (experiment !== "flowers") $("#mode").value = "false";
 }
+$("#institution-source").oninput = () => {
+  if (!id && institutionTemplate() === "accounts" && institutionDefinition)
+    institutionDefinition.source[$("#institution-file").value] = $("#institution-source").value;
+};
+$("#institution-file").onchange = () => {
+  modelEditor(id ? frames()[selected].world.ontology?.definition : institutionDefinition);
+};
+for (const field of ["actor", "epoch"])
+  $("#institution-" + field).oninput = () => {
+    if (!id && institutionTemplate() === "accounts" && institutionDefinition)
+      institutionDefinition[field] = $("#institution-" + field).value;
+  };
 $("#experiment").onchange = () =>
   act(async () => {
     await loadSeed($("#experiment").value);

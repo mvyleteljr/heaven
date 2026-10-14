@@ -244,7 +244,25 @@ pub(crate) fn http(status: u16, body: Value) -> Value {
     }
     json!({"status":status,"headers":{"content-type":"application/json"},"body":body,"truncated":truncated})
 }
-pub fn advance_time(world: &mut World, seconds: u64) {
+pub fn advance_time(world: &mut World, seconds: u64) -> Result<()> {
+    if world.harbor_onto {
+        let mut candidate = world.clone();
+        let target = candidate
+            .tools
+            .as_ref()
+            .unwrap()
+            .elapsed_seconds
+            .saturating_add(seconds)
+            .min(crate::business::HORIZON);
+        while let Some(at) =
+            crate::experiments::harbor_onto::next_event(&candidate).filter(|at| *at <= target)
+        {
+            crate::experiments::harbor_onto::advance(&mut candidate, at)?;
+        }
+        crate::experiments::harbor_onto::advance(&mut candidate, target)?;
+        *world = candidate;
+        return Ok(());
+    }
     if world.business.is_some() {
         let target = world
             .tools
@@ -259,7 +277,7 @@ pub fn advance_time(world: &mut World, seconds: u64) {
             crate::experiments::bellwether::advance(world, at);
         }
         crate::experiments::bellwether::advance(world, target);
-        return;
+        return Ok(());
     }
     if let Some(state) = &mut world.tools {
         state.advance(seconds);
@@ -267,10 +285,11 @@ pub fn advance_time(world: &mut World, seconds: u64) {
             flowers.time = state.time();
         }
     }
+    Ok(())
 }
 pub fn apply(world: &mut World, action: &Action) -> Result<Value> {
     ensure!(!world.finished, "Run has finished");
-    advance_action_time(world, action);
+    advance_action_time(world, action)?;
     if world.finished {
         return Ok(
             json!({"notice":"The 30-day operating period has ended. No further action was executed.","elapsed_seconds":crate::business::HORIZON}),
@@ -280,17 +299,22 @@ pub fn apply(world: &mut World, action: &Action) -> Result<Value> {
 }
 
 /// Construction failures consume the same world time as ordinary actions.
-pub fn advance_action_time(world: &mut World, action: &Action) {
+pub fn advance_action_time(world: &mut World, action: &Action) -> Result<()> {
     let parsed = parse(action);
     let mut elapsed = match &parsed {
         Ok(Call::Wait { seconds }) if *seconds <= 604800 => *seconds,
         _ => 1,
     };
-    if world.business.is_some() {
+    if world.business.is_some() || world.harbor_onto {
+        let next_event = if world.harbor_onto {
+            crate::experiments::harbor_onto::next_event(world)
+        } else {
+            crate::experiments::bellwether::next_event(world)
+        };
         elapsed = match &parsed {
             Ok(Call::Wait { seconds }) if *seconds <= 604800 => (*seconds).min(
-                crate::experiments::bellwether::next_event(world)
-                    .map(|at| at - world.tools.as_ref().unwrap().elapsed_seconds)
+                next_event
+                    .map(|at| at.saturating_sub(world.tools.as_ref().unwrap().elapsed_seconds))
                     .unwrap_or(*seconds),
             ),
             Ok(Call::Shell { .. } | Call::Write { .. }) => 3600,
@@ -299,12 +323,13 @@ pub fn advance_action_time(world: &mut World, action: &Action) {
             _ => 60,
         };
     }
-    advance_time(world, elapsed);
-    if world.business.is_some()
+    advance_time(world, elapsed)?;
+    if (world.business.is_some() || world.harbor_onto)
         && world.tools.as_ref().unwrap().elapsed_seconds >= crate::business::HORIZON
     {
         world.finished = true;
     }
+    Ok(())
 }
 
 fn execute(world: &mut World, action: &Action, parsed: Call) -> Result<Value> {
@@ -366,6 +391,9 @@ fn execute(world: &mut World, action: &Action, parsed: Call) -> Result<Value> {
                 return Ok(response);
             }
             if let Some(response) = crate::experiments::bellwether::http(world, action)? {
+                return Ok(response);
+            }
+            if let Some(response) = crate::experiments::harbor_onto::http(world, action)? {
                 return Ok(response);
             }
             if let Some(response) = crate::ontology::http(world, action)? {

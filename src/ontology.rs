@@ -25,6 +25,8 @@ pub struct Definition {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Receipt {
     pub request_hash: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub submitted_sha256: Option<String>,
     pub result: Value,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -109,6 +111,52 @@ fn bridge(input: Value, expected: &str) -> Result<Value> {
 }
 
 impl State {
+    fn command_guide(&self) -> Value {
+        let mut guide = json!({
+            "endpoint":"https://institutions.local/commands",
+            "method":"POST",
+            "instructions":[
+                "Use the absolute endpoint above. There is no /api prefix.",
+                "Copy a story string from GET https://institutions.local/model verbatim. Keep tokens such as Account:sender in the Story sentence; do not replace them with account names or append amounts.",
+                "Bind each participant token to an instance ID from GET https://institutions.local/facts in participants. Put creation values such as amount and reference in fields.",
+                "Send the command as a JSON-encoded string in http.request inputs.body, with method POST and the absolute url. command_id is a required unique key. Reuse it only for an identical retry; a retry must not create a second effect.",
+                "A 400 response means the request was invalid. Correct the route or payload using the error before trying again. A successful HTTP response alone does not establish success: inspect committed and violations, then verify the facts."
+            ]
+        });
+        // Keep this example out of unrelated authored models. It illustrates the
+        // wire format; the runtime still validates the current model and facts.
+        let story = "Clerk creates Transfer from Account:sender to Account:recipient";
+        let accounts = self.stories.as_array().is_some_and(|stories| {
+            stories
+                .iter()
+                .any(|s| s["story"] == story && s["creates"] == true)
+        }) && ["Account:Operating", "Account:Reserve"].iter().all(|id| {
+            self.snapshot["instances"]
+                .as_array()
+                .is_some_and(|instances| {
+                    instances
+                        .iter()
+                        .any(|i| i["id"] == *id && i["type"] == "Account")
+                })
+        });
+        if accounts {
+            let command = json!({
+                "command_id":"example-transfer-1",
+                "story":story,
+                "participants":{"Account:sender":"Account:Operating","Account:recipient":"Account:Reserve"},
+                "fields":{"amount":2500,"reference":"example-transfer-1"}
+            });
+            guide["example_note"] = json!(
+                "Example for a $25 Operating-to-Reserve transfer. Use it only when it matches your task and current model. Check existing transfers before sending; use a new key/reference for a distinct authorized transfer."
+            );
+            guide["example_action"] = json!({
+                "kind":"http.request",
+                "inputs":{"method":"POST","url":"https://institutions.local/commands","headers":{"content-type":"application/json"},"body":command.to_string()}
+            });
+        }
+        guide
+    }
+
     pub fn check_runtime(&self) -> Result<()> {
         ensure!(
             runtime()?.1 == self.runtime_sha256,
@@ -161,11 +209,13 @@ impl State {
     ) -> Result<Value> {
         if method == "GET" && path == "/" {
             return Ok(
-                json!({"actor":self.definition.actor,"visibility":"All institution facts are public in this experiment.","routes":{"GET /model":"Canonical Onto source and available single actor Stories","GET /facts":"Current facts and derived values","POST /commands":{"command_id":"Stable unique key; reuse only for an identical retry","story":"Exact Story sentence","object":"Optional instance ID","participants":"Optional token to instance ID map","about":"Optional context ID","fields":"Optional creation fields; money is integer minor units"}},"authority":"Actor identity, source, clock, minting and system execution are host-owned."}),
+                json!({"actor":self.definition.actor,"visibility":"All institution facts are public in this experiment.","urls":{"api":ROOT,"model":"https://institutions.local/model","facts":"https://institutions.local/facts","commands":"https://institutions.local/commands"},"routes":{"GET /model":"Canonical Onto source and available single actor Stories","GET /facts":"Current facts and derived values","POST /commands":{"command_id":"Required stable unique key; reuse only for an identical retry","story":"Required exact Story sentence copied verbatim from /model","object":"Optional instance ID","participants":"Token to instance ID map; required when the Story has participants","about":"Optional context ID","fields":"Creation fields from the model; money is integer minor units"}},"command_guide":self.command_guide(),"authority":"Actor identity, source, clock, minting and system execution are host-owned."}),
             );
         }
         if method == "GET" && path == "/model" {
-            return Ok(json!({"source":self.definition.source,"stories":self.stories}));
+            return Ok(
+                json!({"source":self.definition.source,"stories":self.stories,"command_guide":self.command_guide()}),
+            );
         }
         if method == "GET" && path == "/facts" {
             let response = bridge(
@@ -177,18 +227,56 @@ impl State {
         }
         ensure!(
             method == "POST" && path == "/commands",
-            "Unknown institution route"
+            "Unknown institution route: {method} {path}. Use GET https://institutions.local/ for documentation, GET https://institutions.local/model, GET https://institutions.local/facts, or POST https://institutions.local/commands. There is no /api prefix. The documentation includes a complete command example when available."
         );
-        let input: Input = serde_json::from_str(body.unwrap_or("{}"))?;
+        let input: Input = serde_json::from_str(body.unwrap_or("{}")).map_err(|error| {
+            anyhow::anyhow!("Invalid institution command: {error}. POST https://institutions.local/commands with a JSON object containing required command_id and exact story, participants mapping Story tokens to instance IDs, and fields for creation values. For http.request, put this JSON in inputs.body as a string. Read GET https://institutions.local/model for the exact Stories and command guide.")
+        })?;
         ensure!(
             !input.command_id.is_empty() && input.command_id.len() <= 128,
             "Invalid command_id"
         );
+        ensure!(
+            !input.command_id.starts_with("host:"),
+            "Reserved host command ID"
+        );
+        ensure!(
+            self.stories
+                .as_array()
+                .is_some_and(|stories| stories.iter().any(|s| s["story"] == input.story)),
+            "Unknown Story. Copy one of these exact Story sentences verbatim: {}. Bind instance IDs in participants and creation values in fields; do not rewrite the Story or append values. See GET https://institutions.local/model for the command guide.",
+            json!(
+                self.stories
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .map(|s| &s["story"])
+                    .collect::<Vec<_>>()
+            )
+        );
+        let actor = self.definition.actor.clone();
+        self.command(input, elapsed, &actor, false)
+    }
+    /// Trusted scheduling/probe adapter only. Never accept a caller identity from an actor tool.
+    pub(crate) fn host_command(&mut self, actor: &str, body: Value, elapsed: u64) -> Result<Value> {
+        let input: Input = serde_json::from_value(body)?;
+        ensure!(
+            input.command_id.starts_with("host:") && input.command_id.len() <= 128,
+            "Expected a reserved host command ID"
+        );
+        self.command(input, elapsed, actor, true)
+    }
+    fn command(&mut self, input: Input, elapsed: u64, actor: &str, trusted: bool) -> Result<Value> {
         let command = json!({"story":input.story,"object":input.object,"participants":input.participants,"about":input.about,"fields":input.fields});
         // Optional fields must be absent, not null, for the TypeScript API.
         let mut command = command.as_object().unwrap().clone();
         command.retain(|_, v| !v.is_null());
-        let request_hash = format!("{:x}", Sha256::digest(serde_json::to_vec(&command)?));
+        let hash_input = if trusted {
+            json!({"actor":actor,"command":command})
+        } else {
+            json!(command)
+        };
+        let request_hash = format!("{:x}", Sha256::digest(serde_json::to_vec(&hash_input)?));
         if let Some(receipt) = self.receipts.get(&input.command_id) {
             ensure!(
                 receipt.request_hash == request_hash,
@@ -202,7 +290,7 @@ impl State {
         );
         command.insert("id".into(), json!(input.command_id));
         let response = bridge(
-            json!({"operation":"execute","source":self.definition.source,"actor":self.definition.actor,"epoch":self.definition.epoch,"elapsed_seconds":elapsed,"snapshot":self.snapshot,"command":command}),
+            json!({"operation":"execute","source":self.definition.source,"actor":actor,"epoch":self.definition.epoch,"elapsed_seconds":elapsed,"snapshot":self.snapshot,"command":command}),
             &self.runtime_sha256,
         )?;
         ensure!(
@@ -215,6 +303,7 @@ impl State {
             input.command_id,
             Receipt {
                 request_hash,
+                submitted_sha256: None,
                 result: result.clone(),
             },
         );

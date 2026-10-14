@@ -45,6 +45,8 @@ pub struct Document {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct World {
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub harbor_onto: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ontology: Option<ontology::State>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -65,6 +67,7 @@ pub struct World {
 impl Default for World {
     fn default() -> Self {
         Self {
+            harbor_onto: false,
             ontology: None,
             business: None,
             hosting: None,

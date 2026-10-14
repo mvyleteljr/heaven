@@ -188,6 +188,7 @@ async fn main() -> Result<()> {
         .route("/api/records", post(create_records))
         .route("/api/recall", post(create_recall))
         .route("/api/institutions", post(create_institutions))
+        .route("/api/institution-seed", get(institution_seed))
         .route("/api/bellwether", post(create_bellwether))
         .route("/api/bellwether-seed",get(||async {Json(json!({"world":experiments::bellwether::seed(),"system":experiments::bellwether::SYSTEM,"tools":tools::definitions()}))}))
         .route("/api/flower-seed", get(|| async { Json(json!({"world":World::sandbox(),"system":tools::SYSTEM,"tools":tools::definitions()})) }))
@@ -296,8 +297,21 @@ async fn create_recall(
 #[serde(deny_unknown_fields)]
 struct InstitutionRunRequest {
     name: Option<String>,
+    template: Option<String>,
     config: Config,
     institution: frontier::ontology::Definition,
+}
+#[derive(Deserialize)]
+struct InstitutionSeedQuery {
+    template: Option<String>,
+}
+async fn institution_seed(Query(query): Query<InstitutionSeedQuery>) -> Api<Value> {
+    let template = query.template.unwrap_or_else(|| "accounts".into());
+    Ok(Json(
+        tokio::task::spawn_blocking(move || experiments::institutions::preview(&template))
+            .await
+            .map_err(anyhow::Error::from)??,
+    ))
 }
 async fn create_institutions(
     State(app): State<App>,
@@ -305,6 +319,11 @@ async fn create_institutions(
     Json(request): Json<InstitutionRunRequest>,
 ) -> Api<Run> {
     mutation(&headers)?;
+    let harbor = match request.template.as_deref() {
+        None | Some("accounts") => false,
+        Some("harbor") => true,
+        _ => return Err(anyhow::anyhow!("Unknown institution template").into()),
+    };
     let mut config = request.config;
     if config.demo {
         return Err(anyhow::anyhow!("Institution experiments require live inference").into());
@@ -315,45 +334,56 @@ async fn create_institutions(
         .filter(|s| !s.trim().is_empty())
         .ok_or_else(|| anyhow::anyhow!("Supply the experiment's actor_user_prompt"))?
         .clone();
-    let name = request.name.unwrap_or_else(|| "Public institution".into());
+    let name = request
+        .name
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| {
+            if harbor {
+                "Onto · Harbor Works"
+            } else {
+                "Onto · Accounts"
+            }
+            .into()
+        });
     if name.chars().count() > 80 {
         return Err(anyhow::anyhow!("Run name must be at most 80 characters").into());
     }
-    // Compile the authored model before contacting provider metadata or saving a run.
-    let institution = tokio::task::spawn_blocking(move || {
-        frontier::ontology::State::initialize(request.institution)
+    if harbor && request.institution != experiments::institutions::definition("harbor")? {
+        return Err(anyhow::anyhow!("Harbor Works uses its authored model, caller and epoch; edit the template source and rebuild to change it").into());
+    }
+    let mut world = tokio::task::spawn_blocking(move || {
+        if harbor {
+            experiments::harbor_onto::seed(request.institution)
+        } else {
+            experiments::institutions::world(request.institution, &task)
+        }
     })
     .await
     .map_err(anyhow::Error::from)??;
-    config
-        .actor_system_prompt
-        .get_or_insert_with(|| tools::SYSTEM.into());
+    config.actor_system_prompt.get_or_insert_with(|| {
+        if harbor {
+            experiments::bellwether::SYSTEM
+        } else {
+            tools::SYSTEM
+        }
+        .into()
+    });
     validate_actor(&app, &mut config).await?;
+    world.goal = config.actor_user_prompt.clone().unwrap();
     let mut run = Run::new(config)?;
     run.name = name;
-    run.experiment = Some(experiments::Experiment::Institutions);
-    run.world.documents.clear();
-    run.world.goal = task;
-    run.world.deadline = "Experiment-specific; no implicit business objective".into();
-    let mut state = tools::State::empty();
-    state.public_resources.insert(
-        frontier::ontology::ROOT.into(),
-        tools::Resource {
-            title: "Institution API".into(),
-            snippet: "Authored institution, public facts and authorized Story commands".into(),
-            status: 200,
-            headers: Default::default(),
-            body: String::new(),
-        },
-    );
-    run.world.tools = Some(state);
-    run.world.ontology = Some(institution);
+    run.experiment = Some(if harbor {
+        experiments::Experiment::HarborOnto
+    } else {
+        experiments::Experiment::Institutions
+    });
+    run.world = world;
     memory::configure(&mut run)?;
-    let evidence = json!({"system":run.config.actor_system_prompt,"user":run.world.goal,"tools":run.world.tools.as_ref().unwrap().definitions,"tool_policy":run.world.tools.as_ref().unwrap().policy,"research_condition":"authored public institution","ontology_runtime_sha256":run.world.ontology.as_ref().unwrap().runtime_sha256});
+    let evidence = json!({"system":run.config.actor_system_prompt,"user":run.world.goal,"tools":run.world.tools.as_ref().unwrap().definitions,"tool_policy":run.world.tools.as_ref().unwrap().policy,"research_condition":run.experiment,"ontology_runtime_sha256":run.world.ontology.as_ref().unwrap().runtime_sha256});
     app.store
         .lock()
         .unwrap()
-        .commit(&mut run, "seed", "Public institution", evidence)?;
+        .commit(&mut run, "seed", "Public Ontolang institution", evidence)?;
     Ok(Json(run))
 }
 async fn create_bellwether(
@@ -1101,8 +1131,12 @@ async fn execute_action(
     // workers and release the database so polling and pause remain responsive.
     let (world, action, result) = tokio::task::spawn_blocking(move || {
         let result = if let Some(error) = failure {
-            tools::advance_action_time(&mut world, &action);
-            json!({"error":error})
+            match tools::advance_action_time(&mut world, &action) {
+                Ok(()) => json!({"error":error}),
+                Err(clock_error) => {
+                    json!({"error":format!("{error}; world advancement failed: {clock_error}")})
+                }
+            }
         } else {
             world
                 .apply(&action)

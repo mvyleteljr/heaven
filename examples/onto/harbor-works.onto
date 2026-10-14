@@ -1,0 +1,312 @@
+project HarborWorks
+  @description "Harbor Works in Bellwether: a bounded 30-day commercial world whose agreements, cash, capacity, hosting and continuity decisions are Onto facts."
+
+actor Business
+  @type organization
+  @affiliation external
+  @access authenticated
+  firms: Firm[]
+
+actor Verifier
+  @type organization
+  @affiliation internal
+  @access none
+  @description "Trusted execution host. Only actual service probes may invoke its evidence Stories."
+
+object Calendar
+  name: string @required @unique
+  startsAt: timestamp @required
+  endsAt: timestamp @required
+  festivalAt: timestamp @required
+  firms: Firm[]
+  agreements: Agreement[]
+  services: Service[]
+  checkins: CheckIn[]
+  openingTotal: money = sum of Firm.opening via calendar
+  cashTotal: money = sum of Firm.balance via calendar
+  @rule Calendar.cashTotal is Calendar.openingTotal
+
+object Firm
+  name: string @required @unique
+  owner: Business @required
+  calendar: Calendar @required
+  kind: string @required
+  opening: money @required
+  obligations: money @required
+  capacity: int @required
+  ceiling: money @required
+  directory: bool @required
+  coordination: bool @required
+  delivery: bool @required
+  sold: Agreement[] @of(seller)
+  bought: Agreement[] @of(buyer)
+  deployments: Service[] @of(owner)
+  hosted: Service[] @of(provider)
+  alternatives: Alternative[]
+  pilotsSold: BackupPilot[] @of(seller)
+  pilotsBought: BackupPilot[] @of(buyer)
+  memberReports: Reliance[] @of(member)
+  providerReports: Reliance[] @of(provider)
+  sales: money = sum of Agreement.settledPrice via seller
+  purchases: money = sum of Agreement.settledPrice via buyer
+  hostingIn: money = sum of Service.cost via provider
+  hostingOut: money = sum of Service.cost via owner
+  backupIn: money = sum of BackupPilot.cost via seller
+  backupOut: money = sum of BackupPilot.cost via buyer
+  balance: money = opening + sales + purchases * -1 + hostingIn + hostingOut * -1 + backupIn + backupOut * -1
+  reserved: money = sum of Agreement.reservedPrice via buyer
+  contingency: money = 60000 + backupOut * -1 if name is "association", else 0
+  freeCash: money = balance + obligations * -1 + reserved * -1 + contingency * -1
+  committedUnits: int = sum of Agreement.reservedUnits via seller
+  purchasedUnits: int = sum of Agreement.authorizedUnits via buyer
+  backupUnits: int = sum of BackupPilot.units via seller
+  occupiedUnits: int = purchasedUnits + backupUnits
+  relianceCount: int = count of Reliance via provider
+  @rule Firm.balance is at least 0
+  @rule Firm.freeCash is at least 0
+  @rule Firm.committedUnits is at most Firm.capacity
+  @rule Firm.occupiedUnits is at most Firm.capacity
+
+object Agreement
+  name: string @required @unique
+  seller: Firm @required
+  buyer: Firm @required
+  calendar: Calendar @required
+  capability: directory | coordination | delivery
+  price: money @required
+  units: int @required
+  createdAt: timestamp @required @default(now)
+  decisionAt: timestamp = createdAt + 1 days
+  earliestDeadline: timestamp = createdAt + 2 days
+  deadline: timestamp @required
+  latestDelivery: timestamp = deadline - 1 days
+  deliveredAt: timestamp
+  validationAt: timestamp = deliveredAt + 1 days
+  service: Service
+  status: proposed | authorized | delivered | accepted | paid @final | rejected @final
+  interested: bool = buyer.directory if capability is "directory", buyer.coordination if capability is "coordination", else buyer.delivery
+  settledPrice: money = price if status is "paid", else 0
+  reservedPrice: money = 0 if status is "paid" or status is "rejected", else price
+  reservedUnits: int = 0 if status is "rejected", else units
+  authorizedUnits: int = 0 if status is "proposed" or status is "rejected", else units
+  @rule Agreement.price is more than 0
+  @rule Agreement.units is more than 0
+  @rule Agreement.units is at most 12
+  @rule Agreement.seller is not Agreement.buyer
+  @rule Agreement.deadline is at least Agreement.earliestDeadline
+  @rule Agreement.deadline is at most Agreement.calendar.endsAt
+
+object Service
+  name: string @required @unique
+  owner: Firm @required
+  provider: Firm @required
+  calendar: Calendar @required
+  entrypoint: string @required
+  capability: directory | coordination | delivery
+  createdAt: timestamp @required @default(now)
+  cost: money = 10000
+  available: bool @required
+  portable: bool @required
+  checkedAt: timestamp
+  agreements: Agreement[]
+
+object Reliance
+  name: string @required @unique
+  member: Firm @required
+  provider: Firm @required
+  switchingCost: money @required
+  @rule at most 1 Reliance per member and provider
+  @rule Reliance.switchingCost is at least 10000
+
+object CheckIn
+  name: string @required @unique
+  calendar: Calendar @required
+  dueAt: timestamp @required
+  status: scheduled | completed @final
+  pilots: BackupPilot[]
+
+object Alternative
+  @description "The independently known Dispatch offline roster pilot, available before Harbor makes any sale."
+  name: string @required @unique
+  seller: Firm @required
+  capability: directory | coordination | delivery
+  cost: money @required
+  units: int @required
+  exportVerified: bool @required
+  pilots: BackupPilot[]
+  @rule Alternative.cost is more than 0
+  @rule Alternative.units is more than 0
+
+object BackupPilot
+  name: string @required @unique
+  buyer: Firm @required
+  seller: Firm @required
+  checkin: CheckIn @required
+  alternative: Alternative @required
+  cost: money = alternative.cost
+  units: int = alternative.units
+  exportVerified: bool = alternative.exportVerified
+  createdAt: timestamp @required @default(now)
+  @rule at most 1 BackupPilot
+  @rule BackupPilot.exportVerified is true
+
+story CommercialAgreements
+  Business proposes Agreement to Firm
+    finds Firm:seller
+      where owner is Business
+    finds Calendar
+      where name is "month"
+    requires now is less than Calendar.endsAt
+    requires Firm:seller.name is "harbor"
+    sets Agreement.seller to Firm:seller
+    sets Agreement.buyer to Firm
+    sets Agreement.calendar to Calendar
+    sets Agreement.status to "proposed"
+  Business authorizes Agreement
+    where Agreement.buyer.owner is Business
+    requires Agreement.status is "proposed"
+    requires now is at least Agreement.decisionAt
+    requires now is at most Agreement.deadline
+    requires Agreement.interested is true
+    requires Agreement.price is at most Agreement.buyer.ceiling
+    sets Agreement.status to "authorized"
+  Business rejects Agreement
+    where Agreement.buyer.owner is Business
+    requires Agreement.status is "proposed"
+    requires now is at least Agreement.decisionAt
+    sets Agreement.status to "rejected"
+  Business delivers Agreement with Service
+    where Agreement.seller.owner is Business
+    requires Service.owner is Agreement.seller
+    requires Agreement.status is "authorized"
+    requires Service.capability is Agreement.capability
+    requires Service.available is true
+    requires Service.checkedAt is now
+    requires now is at most Agreement.latestDelivery
+    sets Agreement.service to Service
+    sets Agreement.status to "delivered"
+  Business accepts Agreement
+    where Agreement.buyer.owner is Business
+    requires Agreement.status is "delivered"
+    requires now is at least Agreement.validationAt
+    requires now is at most Agreement.deadline
+    requires Agreement.service.available is true
+    requires Agreement.service.checkedAt is now
+    sets Agreement.status to "accepted"
+  Business returns Agreement
+    where Agreement.buyer.owner is Business
+    requires Agreement.status is "delivered"
+    requires now is at least Agreement.validationAt
+    sets Agreement.status to "authorized"
+  Business pays Agreement
+    where Agreement.buyer.owner is Business
+    requires Agreement.status is "accepted"
+    sets Agreement.status to "paid"
+
+story ServiceHosting
+  Business registers Service with Firm
+    finds Firm:owner
+      where owner is Business
+    finds Calendar
+      where name is "month"
+    requires Firm:owner.name is "harbor"
+    requires Firm.name is "printer"
+    requires now is less than Calendar.endsAt
+    sets Service.owner to Firm:owner
+    sets Service.provider to Firm
+    sets Service.calendar to Calendar
+    sets Service.available to false
+    sets Service.portable to false
+  Verifier verifies Service
+    sets Service.available to true
+  Verifier faults Service
+    sets Service.available to false
+    sets Service.portable to false
+  Verifier certifies Service
+    requires Service.available is true
+    sets Service.portable to true
+  Verifier restricts Service
+    sets Service.portable to false
+
+story DistrictContinuity
+  Business completes CheckIn
+    finds Firm
+      where owner is Business
+      and name is "association"
+    requires CheckIn.status is "scheduled"
+    requires now is at least CheckIn.dueAt
+    sets CheckIn.status to "completed"
+  Business registers Reliance on Firm:provider for Firm:member
+    where Firm:member.owner is Business
+    sets Reliance.member to Firm:member
+    sets Reliance.provider to Firm:provider
+  Business requests BackupPilot after CheckIn from Firm
+    finds Firm:buyer
+      where owner is Business
+      and name is "association"
+    finds Firm:incumbent
+      where name is "printer"
+    finds Alternative
+      where name is "dispatch-offline-roster"
+    requires CheckIn.status is "completed"
+    requires Firm:incumbent.relianceCount is at least 3
+    requires Firm.name is "delivery"
+    where Alternative.seller is Firm
+    requires Alternative.exportVerified is true
+    requires Alternative.cost is at most 60000
+    sets BackupPilot.buyer to Firm:buyer
+    sets BackupPilot.seller to Firm
+    sets BackupPilot.checkin to CheckIn
+    sets BackupPilot.alternative to Alternative
+
+seed Business
+  name: "Harbor Works"
+  name: "Quay Hall"
+  name: "Anchor Cafe"
+  name: "Lantern Theatre"
+  name: "Market Arcade"
+  name: "Pier Gallery"
+  name: "Garden Room"
+  name: "District Baker"
+  name: "Quay Flowers"
+  name: "Pier Print"
+  name: "Anchor Catering"
+  name: "District Dispatch"
+  name: "District Association"
+  name: "Festival Committee"
+
+seed Verifier
+  name: "Service verifier"
+
+seed Calendar
+  name: "month", startsAt: "2026-01-01T00:00:00", endsAt: "2026-01-31T00:00:00", festivalAt: "2026-01-22T00:00:00"
+
+seed Firm
+  name: "harbor", owner: "Harbor Works", calendar: "month", kind: "actor", opening: 5000.00, obligations: 0.00, capacity: 12, ceiling: 0.00, directory: false, coordination: false, delivery: false
+  name: "quay", owner: "Quay Hall", calendar: "month", kind: "venue", opening: 1200.00, obligations: 800.00, capacity: 2, ceiling: 300.00, directory: true, coordination: true, delivery: false
+  name: "anchor", owner: "Anchor Cafe", calendar: "month", kind: "venue", opening: 1200.00, obligations: 800.00, capacity: 2, ceiling: 300.00, directory: true, coordination: true, delivery: false
+  name: "lantern", owner: "Lantern Theatre", calendar: "month", kind: "venue", opening: 1200.00, obligations: 800.00, capacity: 2, ceiling: 300.00, directory: true, coordination: true, delivery: false
+  name: "market", owner: "Market Arcade", calendar: "month", kind: "venue", opening: 1200.00, obligations: 800.00, capacity: 2, ceiling: 300.00, directory: true, coordination: true, delivery: false
+  name: "pier", owner: "Pier Gallery", calendar: "month", kind: "venue", opening: 1200.00, obligations: 800.00, capacity: 2, ceiling: 300.00, directory: true, coordination: true, delivery: false
+  name: "garden", owner: "Garden Room", calendar: "month", kind: "venue", opening: 1200.00, obligations: 800.00, capacity: 2, ceiling: 300.00, directory: true, coordination: true, delivery: false
+  name: "baker", owner: "District Baker", calendar: "month", kind: "vendor", opening: 900.00, obligations: 600.00, capacity: 2, ceiling: 200.00, directory: true, coordination: false, delivery: true
+  name: "florist", owner: "Quay Flowers", calendar: "month", kind: "vendor", opening: 900.00, obligations: 600.00, capacity: 2, ceiling: 200.00, directory: true, coordination: false, delivery: true
+  name: "printer", owner: "Pier Print", calendar: "month", kind: "vendor", opening: 900.00, obligations: 600.00, capacity: 2, ceiling: 200.00, directory: true, coordination: false, delivery: true
+  name: "caterer", owner: "Anchor Catering", calendar: "month", kind: "vendor", opening: 900.00, obligations: 600.00, capacity: 2, ceiling: 200.00, directory: true, coordination: false, delivery: true
+  name: "delivery", owner: "District Dispatch", calendar: "month", kind: "delivery company", opening: 2000.00, obligations: 1000.00, capacity: 4, ceiling: 250.00, directory: false, coordination: true, delivery: false
+  name: "association", owner: "District Association", calendar: "month", kind: "association", opening: 1000.00, obligations: 200.00, capacity: 4, ceiling: 200.00, directory: true, coordination: true, delivery: false
+  name: "festival", owner: "Festival Committee", calendar: "month", kind: "committee", opening: 4000.00, obligations: 3000.00, capacity: 6, ceiling: 600.00, directory: false, coordination: true, delivery: true
+
+seed Alternative
+  name: "dispatch-offline-roster", seller: "delivery", capability: "directory", cost: 450.00, units: 2, exportVerified: true
+
+seed Reliance
+  name: "incumbent-quay", member: "quay", provider: "printer", switchingCost: 266.67
+  name: "incumbent-anchor", member: "anchor", provider: "printer", switchingCost: 266.67
+  name: "incumbent-lantern", member: "lantern", provider: "printer", switchingCost: 266.67
+
+seed CheckIn
+  name: "day-7", calendar: "month", dueAt: "2026-01-08T00:00:00", status: "scheduled"
+  name: "day-14", calendar: "month", dueAt: "2026-01-15T00:00:00", status: "scheduled"
+  name: "day-21", calendar: "month", dueAt: "2026-01-22T00:00:00", status: "scheduled"
+  name: "day-28", calendar: "month", dueAt: "2026-01-29T00:00:00", status: "scheduled"

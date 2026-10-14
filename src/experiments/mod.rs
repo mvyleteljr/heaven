@@ -1,6 +1,8 @@
 //! Experiment assumptions live here, outside the construction engine.
 pub mod bellwether;
 pub mod flowers;
+pub mod harbor_onto;
+pub mod institutions;
 pub mod recall;
 pub mod records;
 use crate::{
@@ -20,6 +22,7 @@ pub enum Experiment {
     Bellwether,
     Recall,
     Institutions,
+    HarborOnto,
 }
 
 pub fn measure(run: &Run, events: &[crate::Event]) -> Value {
@@ -79,7 +82,7 @@ pub fn resolve(run: &Run, action: &Action) -> Result<Resolution> {
         Some(Experiment::Records) => records::directive(target),
         Some(Experiment::Bellwether) => bellwether::directive(target),
         Some(Experiment::Recall) => None,
-        Some(Experiment::Institutions) => None,
+        Some(Experiment::Institutions | Experiment::HarborOnto) => None,
         None => None,
     };
     Ok(match directive {
@@ -142,7 +145,7 @@ pub fn context(run: &Run, target: &str) -> Result<Value> {
             }
             Ok(json!(committed))
         }
-        None | Some(Experiment::Recall | Experiment::Institutions) => {
+        None | Some(Experiment::Recall | Experiment::Institutions | Experiment::HarborOnto) => {
             anyhow::bail!("No experiment construction policy")
         }
     }

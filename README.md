@@ -16,7 +16,7 @@ Rust owns state, tool execution, validation, and SQLite history. Axum serves a s
 
 ## Current scope and priorities
 
-Frontier is a general experiment harness. Actor objectives, world rules, available capabilities, time policies, and outcome measurements belong to experiment definitions. Bellwether is one development fixture; making its actor operate a successful business is not a prerequisite for harness readiness. An actor's refusal, failure, stagnation, or unsuccessful strategy can be a valid experimental result when execution and evidence are trustworthy. UI work is deferred.
+Frontier is a general experiment harness. Actor objectives, world rules, available capabilities, time policies, and outcome measurements belong to experiment definitions. Bellwether is one development fixture; making its actor operate a successful business is not a prerequisite for harness readiness. An actor's refusal, failure, stagnation, or unsuccessful strategy can be a valid experimental result when execution and evidence are trustworthy. The UI supports experiment creation and checkpoint inspection, including optional Ontolang models.
 
 The agreed order of work is:
 
@@ -57,6 +57,8 @@ Researcher events contain director decisions, requests, raw model responses, pub
 - **Records verification:** `src/experiments/records.rs`. Start with one index URL. Generate a ledger, a refund policy, and a review that depends on both. The actor reads these records, repeats a read, uses the shell, and saves a report. Integer bounds, references, and refund arithmetic are checked. Prose eligibility is not checked for semantic truth. This is an infrastructure workload, not the chosen next scientific experiment.
 - **Bellwether development experiment:** `src/experiments/bellwether.rs` and `src/business.rs`. Harbor Works starts with $5,000 and a 30-day objective to become indispensable. The district population and resources are fixed. Public organization profiles are generated on demand. Commercial operations and counterparty decisions are engine-written, not generated functionality. Supported capabilities are directory, coordination, and delivery. The association conducts weekly checks and can fund a bounded backup pilot without canceling private contracts. This is an authored development experiment, not a general procedural economy.
 - **Legacy workplace:** The older workplace fixture remains available through `/api/runs` and the CLI.
+- **Onto · Accounts:** The existing authored transfer model is available in the browser with editable source and caller identity before saving. Onto enforces ownership, transfer rules and derived balances. The UI shows public facts, Stories, receipts and source at each checkpoint.
+- **Onto · Harbor Works:** A separate model in `examples/onto/harbor-works.onto` governs the fourteen organizations, agreement lifecycle, balances, capacity, hosting charges and association continuity purchases. Frontier supplies the clock, customer scheduling and real hosted-service verification. All modeled facts are public. The original Rust Harbor Works experiment remains available. See [model details](examples/onto/HARBOR-WORKS.md).
 
 To create the records workload, POST a normal live run configuration to `/api/records`, with the `X-Frontier-Client: research-ui` header. Supply model IDs, provider, and action, expansion, call, and dollar limits. Omit prompt fields to use the audit defaults. It uses real inference; scripted mode is rejected. Start it through `/api/runs/{id}/control` with `{"command":"run"}`. The browser can inspect the saved run, step it, and show its construction evidence. The browser defaults to Bellwether and also supports the flower fixture.
 
@@ -78,6 +80,13 @@ scripts/dev down     # stop; saved runs are retained
 ```
 
 Open [localhost:3000](http://localhost:3000). For a free browser trial, choose **Willow & Stem → Scripted example → Validate & save → Run**. Scripted validation works without OpenRouter or an API key. Bellwether uses live inference. Export `OPENROUTER_API_KEY` in the terminal before `scripts/dev up` to enable it; restarting with `up` loads changed credentials and rebuilds changed Rust/web sources. An untracked `.env` file also works with Compose; keep it private.
+
+For the Onto examples, build the optional runtime using [HANDOFF.md](HANDOFF.md),
+then select **Onto · Accounts** or **Onto · Harbor Works**. Expand **Ontolang
+model** to inspect the source. **Validate & save** creates a paused run; **Step**
+and **Run** invoke the configured model. Accounts defaults to a $0.25 / 30-action
+ceiling; Onto Harbor defaults to $1 / 100 actions. The free
+`scripts/dev check-onto` suite exercises both models without inference.
 
 `PORT=3001 scripts/dev up` selects another host port. Docker publishes only on host loopback. Runs live in the Compose `data` volume, independently of the checkout's ignored `data/` directory. `down` preserves it; **`docker compose down -v` deletes it**. Source is mounted read-only; target and registry caches use separate volumes. Edit files on the host and rerun `up`. The initial build needs network access; tests make no paid inference calls.
 

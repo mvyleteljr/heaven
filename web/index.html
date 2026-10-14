@@ -22,7 +22,9 @@
         <div class="settings-grid">
           <label
             >Experiment<select id="experiment">
-              <option value="bellwether">Bellwether · Harbor Works</option>
+              <option value="bellwether">Bellwether · Harbor Works (original)</option>
+              <option value="institutions">Onto · Accounts</option>
+              <option value="harbor_onto">Onto · Harbor Works</option>
               <option value="flowers">Willow & Stem · fixture</option>
               <option value="records" disabled>Records · verification</option>
             </select></label
@@ -45,6 +47,7 @@
             </select></label
           >
         </div>
+        <p id="experiment-description"></p>
         <div class="model-columns">
           <section aria-label="Actor configuration">
             <h3>Actor <small>OpenRouter</small></h3>
@@ -131,6 +134,18 @@
         <p id="catalog-status" role="status">Loading OpenRouter models…</p>
         <p id="settings-status" role="status"></p>
         <p id="key-status" role="status" hidden>Live runs need a server-side OPENROUTER_API_KEY. To try the free example, select Willow &amp; Stem and Scripted example.</p>
+      </details>
+      <details id="institution-model" class="institution-model" hidden>
+        <summary>Ontolang model &amp; runtime</summary>
+        <p id="institution-status" role="status"></p>
+        <p id="institution-capabilities" class="field-note"></p>
+        <div class="institution-fields">
+          <label>Caller identity<input id="institution-actor" maxlength="200" /></label>
+          <label>Epoch (UTC)<input id="institution-epoch" maxlength="40" /></label>
+          <label>Source file<select id="institution-file"></select></label>
+        </div>
+        <label class="source-label">Ontolang source<textarea id="institution-source" rows="18" spellcheck="false"></textarea></label>
+        <p id="institution-source-note" class="field-note"></p>
       </details>
       <div class="seeds">
         <details>

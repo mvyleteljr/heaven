@@ -7,7 +7,7 @@ try {
   const request=JSON.parse(readFileSync(0,'utf8'));
   const project=parseProjectFiles('frontier-institution',request.source);
   const model=compileModel(project);
-  const now=new Date(Date.parse(request.epoch)+request.elapsed_seconds*1000).toISOString();
+  const now=new Date(Date.parse(request.epoch)+request.elapsed_seconds*1000).toISOString().slice(0,19);
   const stories=model.stories.filter(s=>s.actorType!=='system' && s.every===undefined).map(s=>({id:s.id,story:s.text,creates:s.creates,object:s.primary?.type,participants:s.participants.map(p=>p.token),about:s.about}));
   if (request.operation==='initialize') {
     const initial=initializeWorld(model,now);

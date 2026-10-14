@@ -47,10 +47,10 @@ fn failed_construction_uses_experiment_time_and_ends_at_horizon() {
         "http.request",
         json!({"method":"GET","url":"https://bellwether.local/organizations/quay/about"}),
     );
-    tools::advance_action_time(&mut world, &action);
+    tools::advance_action_time(&mut world, &action).unwrap();
     assert_eq!(world.tools.as_ref().unwrap().elapsed_seconds, 60);
-    tools::advance_time(&mut world, frontier::business::HORIZON - 61);
-    tools::advance_action_time(&mut world, &action);
+    tools::advance_time(&mut world, frontier::business::HORIZON - 61).unwrap();
+    tools::advance_action_time(&mut world, &action).unwrap();
     assert!(world.finished);
     assert_eq!(
         world.tools.unwrap().elapsed_seconds,

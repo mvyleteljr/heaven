@@ -1,7 +1,8 @@
 # Partner handoff
 
 Frontier is a general experiment harness. Actor success in Bellwether is not a
-readiness requirement. UI work is deferred. Start here, then read README.md for
+readiness requirement. Onto examples now have creation and inspection in the UI.
+Start here, then read README.md for
 the architecture and historical audit results.
 
 ## Run locally
@@ -69,9 +70,20 @@ future work.
 
 ## Optional Onto component
 
-`POST /api/institutions` accepts a run config and an authored institution. The
-example request is `examples/onto/institution-run.json`. The actor interacts
-through ordinary HTTP tools at `https://institutions.local/`.
+Choose **Onto · Accounts** or **Onto · Harbor Works** in the browser's experiment
+selector. Accounts provides the existing transfer model with editable source,
+caller and epoch before saving. Harbor Works is a separate authored Ontolang
+model; the original Rust Harbor Works option and its saved runs remain intact.
+The UI shows source, balances, grouped facts, Stories and command receipts at
+each checkpoint. Validate & save creates a paused run; Step and Run use live
+inference. Previewing and the deterministic checks make no paid model calls.
+
+`GET /api/institution-seed?template=accounts|harbor` previews the models.
+`POST /api/institutions` accepts a run config and an authored institution. Add
+`"template":"harbor"` for the fixed Harbor source/caller/epoch; omitted or
+`"accounts"` allows an authored model. The Accounts example request is
+`examples/onto/institution-run.json`. The actor interacts through ordinary HTTP
+tools at `https://institutions.local/`.
 
 The adapter uses the public language/runtime entry points from Onto PR #240,
 pinned to `454af8cb5bf9d6bef725df6a3294a5e54be37894`. It needs a locally built
@@ -93,14 +105,31 @@ their original bundle. Normal harness use and the core tests need no bundle.
 V1 intentionally supports public facts and single actor Stories. The host fixes
 actor identity, supplies the clock, deduplicates command IDs, and persists facts
 and receipts with the run. It rejects candidate standing violations, including
-uniqueness violations, before publication. System effects, `every` operations,
-private/role-filtered reads, and service-verification facts are not integrated.
+uniqueness violations, before publication. System effects, `every` operations
+and private/role-filtered reads are not integrated.
 Do not enable private models by simply changing `public_facts`.
 
 `examples/onto/accounts.onto` demonstrates one modeled ledger with derived
 balances, ownership and nonnegative-balance rules. The adapter test covers
 transfers, overdrafts, unauthorized debits, duplicate references/commands,
 restart, fork isolation, and conservation. No parallel Rust balances are used.
+The institution's `/` and `/model` responses include absolute endpoint URLs,
+literal Story/participant instructions and a complete Accounts tool-call example.
+Bad routes and malformed commands return corrective guidance. A regression
+replays the failed live run's request patterns, then executes the published
+example and verifies that an identical retry cannot transfer twice. This checks
+the API contract; it does not establish that a live actor will recover correctly.
+
+`examples/onto/harbor-works.onto` adds fourteen organizations, reserved funds and
+capacity, agreement approval/delivery/acceptance/payment, hosting charges,
+service verification, association reviews and a continuity pilot. Onto owns the
+economic facts; Frontier supplies exact-second scheduling, trusted customer
+identities and real isolated service probes. The Harbor HTTP adapter restricts
+public command fields and keeps verification and counterparty Stories private
+to trusted host execution. All modeled facts, including budgets, are public.
+See `examples/onto/HARBOR-WORKS.md` for the model's scope and timestamp boundary.
+`scripts/dev check-onto` runs its direct model replay and the Accounts, Harbor
+host and HTTP integration tests without inference.
 
 The existing `scripts/onto-spike.mjs` is an older compatibility demonstration
 against the sibling checkout; it is separate from this pinned adapter.

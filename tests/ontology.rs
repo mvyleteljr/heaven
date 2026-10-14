@@ -1,5 +1,5 @@
 use anyhow::Result;
-use frontier::{Config, Run, Store, ontology, tools};
+use frontier::{Config, Run, Store, World, experiments::institutions, ontology, tools};
 use serde_json::{Value, json};
 const STORY: &str = "Clerk creates Transfer from Account:sender to Account:recipient";
 fn transfer(key: &str, reference: &str, amount: i64, sender: &str) -> Value {
@@ -13,6 +13,183 @@ fn balances(state: &ontology::State) -> Vec<i64> {
         .filter(|v| v["type"] == "Account")
         .map(|v| v["fields"]["balance"].as_i64().unwrap())
         .collect()
+}
+
+fn http(world: &mut World, method: &str, path: &str, body: Option<&str>) -> Result<Value> {
+    let mut inputs = json!({"method":method,"url":format!("https://institutions.local{path}")});
+    if let Some(body) = body {
+        inputs["body"] = json!(body);
+    }
+    world.apply(&tools::call("http.request", inputs))
+}
+
+fn response_body(response: &Value) -> Result<Value> {
+    assert_eq!(response["truncated"], false, "{response}");
+    Ok(serde_json::from_str(response["body"].as_str().unwrap())?)
+}
+
+#[test]
+#[ignore = "Requires the pinned optional Onto bundle; scripts/dev check-onto runs this test"]
+fn accounts_api_guidance_recovers_from_observed_bad_requests_without_changing_the_ledger()
+-> Result<()> {
+    let mut world = institutions::world(
+        institutions::definition("accounts")?,
+        institutions::ACCOUNTS_TASK,
+    )?;
+    let initial = world.ontology.as_ref().unwrap().clone();
+
+    // Representative actions from the failed Accounts run. Keep these embedded
+    // so the regression does not depend on a local saved run or its database.
+    for (method, path, body) in [
+        (
+            "POST",
+            "/api/transfer",
+            Some(r#"{"from_account":"Operating","to_account":"Reserve","amount_cents":2500}"#),
+        ),
+        (
+            "POST",
+            "/api/commands",
+            Some(
+                r#"{"command_id":"cmd1","story":"Transfer 2500 cents from Operating account to Reserve account."}"#,
+            ),
+        ),
+        (
+            "POST",
+            "/api/commands",
+            Some(
+                r#"{"story":"Clerk creates Transfer from Account:Operating to Account:Reserve with amount 2500 and reference ref1"}"#,
+            ),
+        ),
+        ("GET", "/api/model", None),
+    ] {
+        let response = http(&mut world, method, path, body)?;
+        assert_eq!(response["status"], 400, "{response}");
+        let body = response_body(&response)?;
+        assert!(
+            body["error"]
+                .as_str()
+                .unwrap()
+                .contains("https://institutions.local/commands"),
+            "{body}"
+        );
+        assert_eq!(world.ontology.as_ref().unwrap(), &initial);
+    }
+
+    // At the right endpoint, distinguish a malformed envelope from a Story
+    // sentence whose participant IDs and creation fields were pasted into it.
+    for malformed in [
+        r#"{"story":"Clerk creates Transfer from Account:Operating to Account:Reserve with amount 2500 and reference ref1"}"#,
+        r#"{"command_id": "broken", "story":"#,
+    ] {
+        let response = http(&mut world, "POST", "/commands", Some(malformed))?;
+        assert_eq!(response["status"], 400, "{response}");
+        let body = response_body(&response)?;
+        let error = body["error"].as_str().unwrap();
+        for required in ["command_id", "story", "participants", "fields"] {
+            assert!(error.contains(required), "{error}");
+        }
+        assert_eq!(world.ontology.as_ref().unwrap(), &initial);
+    }
+
+    let response = http(
+        &mut world,
+        "POST",
+        "/commands",
+        Some(
+            r#"{"command_id":"cmd2","story":"Clerk creates Transfer from Account:Operating to Account:Reserve with amount 2500 and reference 'ref1'"}"#,
+        ),
+    )?;
+    assert_eq!(response["status"], 400, "{response}");
+    let body = response_body(&response)?;
+    let error = body["error"].as_str().unwrap();
+    for required in [STORY, "participants", "fields"] {
+        assert!(error.contains(required), "{error}");
+    }
+    assert_eq!(world.ontology.as_ref().unwrap(), &initial);
+
+    // The API and model both expose the same executable HTTP tool example.
+    let api = response_body(&http(&mut world, "GET", "/", None)?)?;
+    let model = response_body(&http(&mut world, "GET", "/model", None)?)?;
+    assert_eq!(api["command_guide"], model["command_guide"]);
+    let guide = &api["command_guide"];
+    assert_eq!(guide["endpoint"], "https://institutions.local/commands");
+    assert!(
+        guide["instructions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(Value::is_string)
+    );
+    let example = &guide["example_action"];
+    assert_eq!(example["kind"], "http.request");
+    assert_eq!(example["inputs"]["method"], "POST");
+    assert_eq!(
+        example["inputs"]["url"],
+        "https://institutions.local/commands"
+    );
+    let command: Value = serde_json::from_str(example["inputs"]["body"].as_str().unwrap())?;
+    assert_eq!(
+        command,
+        transfer(
+            "example-transfer-1",
+            "example-transfer-1",
+            2500,
+            "Account:Operating"
+        )
+    );
+    assert_eq!(world.ontology.as_ref().unwrap(), &initial);
+
+    let action = serde_json::from_value(example.clone())?;
+    let response = world.apply(&action)?;
+    assert_eq!(response["status"], 200, "{response}");
+    let committed = response_body(&response)?;
+    assert_eq!(committed["committed"], true, "{committed}");
+    assert_eq!(
+        balances(world.ontology.as_ref().unwrap()),
+        vec![7500, 7500, 2500]
+    );
+    let retry = world.apply(&action)?;
+    assert_eq!(retry["status"], 200, "{retry}");
+    assert_eq!(response_body(&retry)?, committed);
+    assert_eq!(world.ontology.as_ref().unwrap().receipts.len(), 1);
+
+    let facts = response_body(&http(&mut world, "GET", "/facts", None)?)?;
+    assert_eq!(facts["snapshot"], world.ontology.as_ref().unwrap().snapshot);
+    assert_eq!(
+        balances(world.ontology.as_ref().unwrap()),
+        vec![7500, 7500, 2500]
+    );
+    assert_eq!(
+        facts["snapshot"]["instances"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|instance| instance["type"] == "Transfer")
+            .count(),
+        1
+    );
+    Ok(())
+}
+
+#[test]
+#[ignore = "Requires the pinned optional Onto bundle; scripts/dev check-onto runs this test"]
+fn custom_institution_guidance_does_not_offer_an_accounts_specific_command() -> Result<()> {
+    let mut definition = institutions::definition("accounts")?;
+    for source in definition.source.values_mut() {
+        *source = source.replace("Clerk", "Treasurer");
+    }
+    definition.actor = "Treasurer:Ada".into();
+    let mut state = ontology::State::initialize(definition)?;
+    for path in ["/", "/model"] {
+        let document = state.request("GET", path, None, 0)?;
+        let guide = &document["command_guide"];
+        assert_eq!(guide["endpoint"], "https://institutions.local/commands");
+        assert!(guide["instructions"].is_array());
+        assert!(guide.get("example_action").is_none(), "{guide}");
+    }
+    assert!(state.receipts.is_empty());
+    assert_eq!(balances(&state), vec![10000, 5000, 2500]);
+    Ok(())
 }
 
 #[test]

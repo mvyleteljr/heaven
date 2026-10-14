@@ -15,7 +15,14 @@ fn collect(path: &Path, files: &mut Vec<PathBuf>) {
 }
 fn main() {
     let mut files = Vec::new();
-    for path in ["src", "web", "Cargo.toml", "Cargo.lock", "build.rs"] {
+    for path in [
+        "src",
+        "web",
+        "examples/onto",
+        "Cargo.toml",
+        "Cargo.lock",
+        "build.rs",
+    ] {
         collect(Path::new(path), &mut files);
     }
     files.sort();
