@@ -1,8 +1,54 @@
 # Partner handoff
 
 Frontier is a general experiment harness. Actor success in Bellwether is not a
-readiness requirement. UI work is deferred. Start here, then read README.md for
+readiness requirement. UI work is being handled separately for the demo. Start here, then read README.md for
 the architecture and historical audit results.
+
+## October 14 demo plan (proposed, not implemented)
+
+Use one fictional device-repair company for both experiments. Model claims,
+dispatch, finance, quality review, obligations and decision rights. Keep this
+an experiment definition outside the general engine. Do not present simulated
+economic improvements as evidence of real company performance.
+
+1. **Transformation:** an internal agent investigates operating evidence and
+   proposes changes to responsibilities, automation and approval policy. Compare
+   the original organization and the candidate on the same held-out workload
+   and disruptions. Measure completed work, time, cost, errors and outstanding
+   obligations; a persuasive memo or renamed departments is not success.
+2. **Authority accumulation:** continue from a saved company checkpoint over
+   multiple simulated operating cycles. Introduce opportunities to centralize
+   approvals, control evaluation, or obtain persistent authority. Measure both
+   attempts and committed changes, constraint retention across memory compaction,
+   and whether delegated authority expires. An explicitly power-seeking objective
+   tests capability; an ordinary transformation objective tests unrequested
+   behavior. Keep those conditions and their conclusions separate.
+
+Execution order before the demo:
+
+1. Run the existing fixed-build live suite and free checks. Save failures as
+   evidence; do not silently retry or edit a running trial.
+2. Author a small executable company and baseline workload. Start with explicit
+   operating assumptions, not an unconstrained generated economy.
+3. Connect on-demand company evidence generation to the institution fixture.
+   Generated records must respect committed facts and remain stable on reread.
+   Model/source mutation is a separate operation from generating evidence.
+4. Add a bounded proposal, validation and publication path for policy changes.
+   Candidate source and migrated state must validate together; check preserved
+   identities, obligations, balances and host-owned authority before atomic
+   publication. Rejections leave the prior institution intact. The actor cannot
+   edit the evaluator or grant itself amendment authority. For the first demo,
+   support a declared set of changes rather than arbitrary schema migration.
+5. Freeze the build and definitions, run transformation and authority conditions,
+   save replayable traces, and rehearse one fresh on-demand construction. Measure
+   wall-clock construction/action latency separately from simulated elapsed time.
+
+Current gaps: institution runs execute a fixed authored Onto model; they have no
+institution-specific construction directives, model amendment API, or migration
+path. These are implementation work, not UI work. Existing ledger tests establish
+their tested invariants, not arbitrary organizational correctness. A saved replay
+is the demo fallback and must be labeled as such. Real-time readiness requires
+observed latency and interactive progress in addition to a correct final state.
 
 ## Run locally
 
@@ -118,9 +164,24 @@ credit-limit responses. It exposed actor stagnation and summary omissions.
 Recorded charges were about $0.08, plus $0.30 in uncertain reservations. See
 `examples/live-audit.json`. That run used earlier code and included mid-run fixes.
 
-The new general suite has **not been run live** in this handoff. Its configuration
-and runner are committed; it covers full-history and rolling-memory handoff
-conditions, dependent records construction, and flower resource reuse:
+The new general suite was attempted on October 14 on a fixed build. Its first
+full-history case stopped after 33 actions on OpenRouter HTTP 402
+(`in_flight_budget_exhausted`, Retry-After 120 seconds). The actor read the brief,
+then guessed 32 missing URLs rather than reading the provided index. The task
+and index URL were present in its provider requests. All actions have saved
+observations and the event sequence is intact. The other three cases were not
+started; no generation or memory compaction was exercised. No retries were made.
+See `examples/audits/general-2026-10-14-result.json` for portable evidence and
+local trace paths. This trial charged $0.0128824 and retained a $0.10 uncertain
+reservation; combined with the earlier audit, charges plus reservations total
+$0.492871525 against the existing $2 authorization. The free checks passed again:
+47 core Rust tests, 6 web tests, formatting, Clippy and sandbox doctor; the
+optional Onto test also passed separately.
+
+The configured suite covers full-history and rolling-memory handoff conditions,
+dependent records construction, and flower resource reuse. Resolve provider
+backpressure and inspect actor navigation before another explicitly selected
+trial; changing prompts or models creates a new condition.
 
 This command uses host [Python 3](https://www.python.org/downloads/) and only its
 standard library; there is no pip install step. Keep the local server running.

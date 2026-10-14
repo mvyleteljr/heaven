@@ -11,7 +11,7 @@ work. `README.md` describes the architecture and historical audit evidence.
 - Establish the user's live inference budget before starting paid runs. Keep
   recorded costs and uncertain reservations within that authorization.
 - Frontier is a general harness. Business success is an experiment outcome,
-  not a prerequisite for runtime correctness. UI work is currently deferred.
+  not a prerequisite for runtime correctness. UI work is being handled separately.
 - Onto is optional. Consult its pinned-build instructions only for institution
   work; ordinary startup and core tests do not require the sibling repository.
 - Preserve saved runs and existing local changes. Record incomplete validation
