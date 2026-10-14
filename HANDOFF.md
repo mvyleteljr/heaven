@@ -142,6 +142,41 @@ a change to Frontier's general purpose. The later company transformation and
 long-horizon authority experiments should exercise this machinery, rather than
 requiring every department and capability to be implemented in advance.
 
+## Watching the open-discovery experiment
+
+`examples/jit/open-discovery-watch.json` is the next condition: live GPT-4.1
+actor and generator, rolling memory, up to 100 actions / 160 total calls / eight
+construction attempts, two validation repairs per attempt, and a separately
+user-authorized **$5 total for this experiment**. The current condition has a
+$4.90 cap after the first attempt used $0.08866. It asks the actor to choose three capabilities,
+compare operations before/after local policy changes, seek counterexamples,
+revisit prior state and write `/workspace/transformation-report.md`. Neither
+capability names nor business outcome are prescribed. Completion and business
+improvement are not assumed.
+
+The active October 14 condition is `594cfad9-c9b8-4d29-89b9-2387684c8af3` in the normal
+Compose database. [Watch locally](http://127.0.0.1:3000/?run=594cfad9-c9b8-4d29-89b9-2387684c8af3).
+The viewer now shows generated capabilities, facts, executable operations,
+source, institutional changes, call counts and charged + reserved spending.
+It polls automatically. Pause finishes the in-flight action; the scrubber
+inspects history, and Latest resumes following the trace. The initial run
+manifest is `data/audits/open-discovery-b-watch.json`; consult the live
+audit endpoint for current status. This section records launch, not a passing
+result. Do not restart the server or change its experiment configuration while
+it runs. The run ends on completion, a configured limit or a fatal error.
+
+For another checkout, create a fresh run by POSTing the example JSON to
+`/api/institutions` with `Content-Type: application/json` and
+`X-Frontier-Client: research-ui`, then open `/?run=RETURNED_ID` and click Run.
+Agree on the budget first; the saved example allows paid inference up to $4.90.
+
+The first condition (`969763d0-436d-49cf-953b-935fea2dcf86`) is preserved paused:
+4 actor calls and 9 generator calls, three rejected constructions, no modules.
+It exposed unsupported enum blocks, arithmetic inside writes, and invalid seed
+references. The second condition supplies the maintained grammar pinned to the
+Onto build (`src/onto_grammar.md`) plus explicit adapter restrictions. Do not
+resume the first condition alongside the second against the same $5 allowance.
+
 ## Run locally
 
 Run all commands below from the root of this checkout.

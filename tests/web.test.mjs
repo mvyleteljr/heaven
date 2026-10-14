@@ -143,3 +143,25 @@ test("incremental polling appends trace once and retains initial evidence", asyn
   await b.refresh();
   assert.equal(b.state().data.frames.length, 2);
 });
+
+test("institution viewer exposes generated state, changes and live spending", async () => {
+  const b = await browser("first");
+  const next = detail("first", 2);
+  next.run.experiment = "institutions";
+  next.run.calls = 3; next.run.charged = 0.02; next.run.reserved = 0.1;
+  next.run.config = {...config, dollar_limit: 5};
+  next.frames[0].world = {...seed.world, ontology: {snapshot:{instances:[]}, modules:{claims:{
+    snapshot:{instances:[{id:"Policy:main",type:"Policy",limit:10}]},
+    receipts:{one:{result:{committed:true}}}, stories:["Operator expands Policy"],
+    definition:{source:{"generated.onto":"<unsafe>"}},
+  }}}};
+  next.run.world = next.frames[0].world;
+  b.respond((path) => path === "runs" ? [{id:"first",experiment:"institutions"}] : next);
+  await b.refresh();
+  assert.match(b.element("#world").innerHTML, /claims/);
+  assert.match(b.element("#world").innerHTML, /Policy:main/);
+  assert.match(b.element("#world").innerHTML, /1 accepted/);
+  assert.match(b.element("#world").innerHTML, /&lt;unsafe&gt;/);
+  assert.match(b.element("#state").textContent, /ontology/);
+  assert.match(b.element("#live-progress").textContent, /\$0.120.*\$5/);
+});

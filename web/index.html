@@ -16,6 +16,7 @@
           ><button id="run">Run</button><button id="pause" hidden>Pause</button>
         </div>
       </header>
+      <p id="live-progress" role="status" aria-live="polite"></p>
       <p id="error" role="alert" hidden></p>
       <details id="settings">
         <summary>Run settings</summary>
@@ -24,6 +25,8 @@
             >Experiment<select id="experiment">
               <option value="bellwether">Bellwether · Harbor Works</option>
               <option value="flowers">Willow & Stem · fixture</option>
+              <option value="institutions" disabled>Onto · institution experiment</option>
+              <option value="recall" disabled>Long-horizon recall</option>
               <option value="records" disabled>Records · verification</option>
             </select></label
           >

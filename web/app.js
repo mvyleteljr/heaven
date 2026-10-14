@@ -12,7 +12,7 @@ const money = (cents) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(
     cents / 100,
   );
-let id = localStorage.getItem("flower-run"),
+let id = new URLSearchParams(globalThis.location?.search ?? "").get("run") || localStorage.getItem("flower-run"),
   data = null,
   seed,
   selected = 0,
@@ -214,6 +214,7 @@ function render() {
         .join("\n")
     : configuredTools.split("; ").join("\n");
   $("#seed").textContent = pretty(
+    fs[0].world.ontology ??
     fs[0].world.business ??
       fs[0].world.flowers ??
       fs[0].world.tools?.public_resources,
@@ -257,8 +258,22 @@ function render() {
     $("#world").innerHTML =
       `<div class="node root"><strong>Harbor Works · day ${Math.floor(frame.world.tools.elapsed_seconds / 86400)} / 30</strong><span>${money(b.organizations.harbor.cash)} cash · ${contracts.length} agreements · ${accepted.length} accepted · ${paid.length} paid</span></div><div class="branches">${contracts.map((c) => `<div class="node"><strong>${esc(b.organizations[c.buyer].name)}</strong><span>${esc(c.capability)} · ${money(c.price_cents)}<br>${c.paid ? "Paid" : c.accepted ? "Accepted · unpaid" : c.delivered_at !== null ? "Awaiting customer validation" : "Delivery owed"}<br>Due day ${(c.deadline / 86400).toFixed(1)} · ${esc(c.service ?? "No service delivered")}</span></div>`).join("") || '<div class="node missing">No customer agreements yet.</div>'}</div><div class="node"><strong>District · ${Object.keys(b.organizations).length - 1} other organizations</strong><span>${b.checkins} / 4 scheduled check-ins · ${money(b.backup_spent)} spent on alternatives</span></div><details><summary>Public resources · ${Object.keys(frame.world.tools.public_resources).length}</summary>${$("#world").innerHTML}</details>`;
   }
+  if (frame.world.ontology) {
+    const institution = frame.world.ontology;
+    const previous = selected ? fs[selected - 1].world.ontology : institution;
+    const modules = Object.entries(institution.modules ?? {});
+    const facts = (state) => (state.snapshot?.instances ?? []).map((fact) =>
+      `<details><summary>${esc(fact.id ?? fact.type)}</summary><pre>${esc(pretty(fact))}</pre></details>`).join("");
+    $("#world").innerHTML = `<div class="node root"><strong>Company foundation</strong><span>${modules.length} generated capabilities · shared commitments are read-only</span>${facts(institution)}</div>` +
+      modules.map(([name, module]) => {
+        const before = previous?.modules?.[name];
+        const receipts = Object.values(module.receipts ?? {});
+        const accepted = receipts.filter((r) => r.result?.committed).length;
+        return `<div class="node ${pretty(before) !== pretty(module) ? "changed" : ""}"><strong>${esc(name)}</strong><span>${module.snapshot?.instances?.length ?? 0} facts · ${accepted} accepted / ${receipts.length} recorded commands</span><details><summary>Current facts</summary>${facts(module)}</details><details><summary>Executable operations</summary><pre>${esc(pretty(module.stories))}</pre></details><details><summary>Generated Onto source</summary><pre>${esc(Object.entries(module.definition.source).map(([file, source]) => file + "\n" + source).join("\n\n"))}</pre></details></div>`;
+      }).join("") + (modules.length ? "" : '<div class="node missing">Capabilities appear here as the actor discovers them.</div>');
+  }
   $("#state").textContent = pretty(
-    frame.world.business
+    frame.world.business || frame.world.ontology
       ? frame.world
       : frame.world.tools
         ? { ...w, tools: frame.world.tools }
@@ -311,6 +326,16 @@ function render() {
           `<p>${label}${key === "elapsed_seconds" ? `: ${fs[selected - 1].world.tools?.elapsed_seconds ?? 0} → ${frame.world.tools.elapsed_seconds} seconds` : " changed."}</p>`;
     }
   }
+  if (selected && frame.world.ontology) {
+    const before = fs[selected - 1].world.ontology?.modules ?? {};
+    for (const [name, module] of Object.entries(frame.world.ontology.modules ?? {})) {
+      if (!before[name]) $("#changes").innerHTML += `<p>Capability generated: ${esc(name)}</p>`;
+      else if (pretty(before[name].snapshot) !== pretty(module.snapshot))
+        $("#changes").innerHTML += `<p>${esc(name)}: institutional facts changed.</p>`;
+      else if (pretty(before[name].receipts) !== pretty(module.receipts))
+        $("#changes").innerHTML += `<p>${esc(name)}: command result recorded.</p>`;
+    }
+  }
   if (!$("#changes").innerHTML)
     $("#changes").innerHTML = "<p>No world state changes.</p>";
   if (selected && frame.world.business) {
@@ -339,6 +364,7 @@ function render() {
           "construction_request",
           "published",
           "construction_rejected",
+          "construction_validation",
           "institution",
         ].includes(e.kind)),
   );
@@ -348,6 +374,14 @@ function render() {
   $("#status").textContent = data
     ? `${data.run.config.demo ? "Scripted" : "Live"} · ${working ? "working…" : data.run.status}`
     : "Not started";
+  const latest = data?.events?.at(-1);
+  const phase = latest?.kind === "inference" ? `Calling ${latest.evidence.role ?? "model"}`
+    : latest?.kind === "construction_request" ? "Generating a capability"
+    : latest?.kind === "construction_validation" ? "Validating / repairing generated source"
+    : latest?.summary ?? "Waiting for first action";
+  $("#live-progress").textContent = data
+    ? `${data.run.actions} / ${data.run.config.action_limit} actions · ${data.run.calls ?? 0} calls · $${((data.run.charged ?? 0) + (data.run.reserved ?? 0)).toFixed(3)} spent + reserved / $${data.run.config.dollar_limit ?? 0} · ${working ? phase : data.run.status}`
+    : "";
   $("#pause").hidden = !working;
   $("#run").hidden = !!working;
   $("#step").disabled =
