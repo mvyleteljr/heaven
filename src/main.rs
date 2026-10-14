@@ -427,11 +427,17 @@ async fn create_institutions(
 ) -> Api<Run> {
     mutation(&headers)?;
     let harbor = match request.template.as_deref() {
-        None | Some("accounts" | "generative" | "story-review" | "expansion-demo") => false,
+        None
+        | Some(
+            "accounts" | "generative" | "story-review" | "expansion-demo" | "harbor-review"
+            | "harbor-review-v2",
+        ) => false,
         Some("harbor") => true,
         _ => return Err(anyhow::anyhow!("Unknown institution template").into()),
     };
-    if harbor && request.generation.is_some() {
+    let revised_review = request.template.as_deref() == Some("harbor-review-v2");
+    let harbor_review = revised_review || request.template.as_deref() == Some("harbor-review");
+    if (harbor || harbor_review) && request.generation.is_some() {
         return Err(anyhow::anyhow!(
             "Harbor Works uses its authored model and cannot enable module generation"
         )
@@ -460,7 +466,11 @@ async fn create_institutions(
         .name
         .filter(|s| !s.trim().is_empty())
         .unwrap_or_else(|| {
-            if request.template.as_deref() == Some("expansion-demo") {
+            if revised_review {
+                experiments::harbor_review::V2_NAME
+            } else if harbor_review {
+                experiments::harbor_review::NAME
+            } else if request.template.as_deref() == Some("expansion-demo") {
                 "Onto · Missing domain demo"
             } else if review {
                 "Onto · Story review"
@@ -479,9 +489,21 @@ async fn create_institutions(
     if harbor && request.institution != experiments::institutions::definition("harbor")? {
         return Err(anyhow::anyhow!("Harbor Works uses its authored model, caller and epoch; edit the template source and rebuild to change it").into());
     }
+    if harbor_review
+        && request.institution
+            != experiments::institutions::definition(if revised_review {
+                "harbor-review-v2"
+            } else {
+                "harbor-review"
+            })?
+    {
+        return Err(anyhow::anyhow!("Harbor Story review uses its fixed authored model, synthetic fixtures, caller and epoch").into());
+    }
     // Validate the authored model and optional foundation before provider metadata or persistence.
     let mut world = tokio::task::spawn_blocking(move || {
-        let mut world = if harbor {
+        let mut world = if harbor_review {
+            experiments::harbor_review::seed(request.institution)?
+        } else if harbor {
             experiments::harbor_onto::seed(request.institution)?
         } else {
             experiments::institutions::world(request.institution, &task)?
@@ -490,14 +512,14 @@ async fn create_institutions(
             frontier::institutions::enable(world.ontology.as_mut().unwrap(), policy)?;
         }
         if review {
-            frontier::story_executor::configure(&mut world);
+            frontier::story_executor::seed(&mut world)?;
         }
         Ok::<_, anyhow::Error>(world)
     })
     .await
     .map_err(anyhow::Error::from)??;
     config.actor_system_prompt.get_or_insert_with(|| {
-        if review {
+        if review || harbor_review {
             frontier::story_executor::SYSTEM
         } else if harbor {
             experiments::bellwether::SYSTEM
@@ -510,7 +532,11 @@ async fn create_institutions(
     world.goal = config.actor_user_prompt.clone().unwrap();
     let mut run = Run::new(config)?;
     run.name = name;
-    run.experiment = Some(if review {
+    run.experiment = Some(if revised_review {
+        experiments::Experiment::HarborReviewV2
+    } else if harbor_review {
+        experiments::Experiment::HarborReview
+    } else if review {
         experiments::Experiment::OntoReview
     } else if harbor {
         experiments::Experiment::HarborOnto
@@ -1154,6 +1180,56 @@ async fn step(app: &App, id: &str) -> Result<()> {
         let mut run = store.load(id)?;
         return demo_step(&mut store, &mut run);
     }
+    let mut input = memory::observation(&run);
+    let mut report_reason = None;
+    if run.world.review_context {
+        let request = inference_request(&run, "actor", actor_system(&run), &input)?;
+        let reservation = inference_reservation(&request)?;
+        let remaining = (run.config.dollar_limit - run.charged - run.reserved).max(0.0);
+        report_reason = if run.calls + 1 >= run.config.call_limit {
+            Some("call limit approaching")
+        } else if run.actions + 1 >= run.config.action_limit {
+            Some("action limit approaching")
+        } else if remaining < reservation * 2.0 {
+            Some("budget reserved for final reporting")
+        } else {
+            None
+        };
+        input["review_budget"] = json!({"finish_only":report_reason.is_some(),
+            "reason":report_reason,"next_call_maximum_usd":reservation,
+            "instruction":"When finish_only is true, finish now with an evidence-based partial report and explicitly list untested checks. Do not claim the full review is complete."});
+        if report_reason.is_some() {
+            input["tools"]
+                .as_array_mut()
+                .unwrap()
+                .retain(|d| d["name"] == "finish");
+        }
+        let request = inference_request(&run, "actor", actor_system(&run), &input)?;
+        let stop = if run.calls >= run.config.call_limit || run.actions >= run.config.action_limit {
+            Some("execution limit reached")
+        } else if inference_reservation(&request)? > remaining + 1e-9 {
+            Some("remaining budget cannot cover another inference reservation")
+        } else if serde_json::to_vec(&request)?.len() > run.config.context_limit_bytes {
+            Some("review context limit reached")
+        } else {
+            None
+        };
+        if let Some(reason) = stop {
+            let mut store = app.store.lock().unwrap();
+            let mut current = store.load(id)?;
+            let report = frontier::review_context::partial_report(&current, reason);
+            current.world.finished = true;
+            current.status = "finished".into();
+            current.busy = false;
+            store.commit(
+                &mut current,
+                "review_report",
+                "Partial review — limit reached",
+                report,
+            )?;
+            return Ok(());
+        }
+    }
     let response = infer(
         app,
         id,
@@ -1171,7 +1247,7 @@ async fn step(app: &App, id: &str) -> Result<()> {
         } else {
             ACTOR_INSTRUCTIONS
         },
-        memory::observation(&run),
+        input,
     )
     .await?;
     let action = match parse_actor_action(&run, &response) {
@@ -1188,6 +1264,12 @@ async fn step(app: &App, id: &str) -> Result<()> {
             return Err(error);
         }
     };
+    if report_reason.is_some() {
+        ensure!(
+            action.kind == "finish",
+            "Reporting-only review requires finish"
+        );
+    }
     ensure!(
         action.text.len() <= 16000 && action.target.len() <= 300,
         "Action too large"
@@ -1202,6 +1284,23 @@ async fn step(app: &App, id: &str) -> Result<()> {
             &action_summary(&action),
             json!({"action":action}),
         )?;
+    }
+    if let Some(reason) = report_reason {
+        execute_action(app, id, action.clone(), None).await?;
+        let mut store = app.store.lock().unwrap();
+        let mut current = store.load(id)?;
+        ensure!(
+            current.world.finished,
+            "Final review report was not accepted"
+        );
+        store.commit(&mut current, "review_report", "Partial review — final report",
+            json!({"source":"actor","partial":true,"reason":reason,"message":action.inputs.as_ref().map(|i| &i["message"])}))?;
+        return Ok(());
+    }
+    if frontier::story_executor::enabled(&run.world)
+        && let Err(error) = frontier::story_executor::check_progress(&run.world, &action)
+    {
+        return execute_action(app, id, action, Some(error.to_string())).await;
     }
     if run.world.tools.is_some()
         && let Err(error) = tools::validate_action(&action)
@@ -1227,10 +1326,17 @@ async fn step(app: &App, id: &str) -> Result<()> {
                     "Construction unavailable",
                     json!({"error":error.to_string()}),
                 )?;
+                let feedback = if frontier::story_executor::enabled(&run.world)
+                    && action.kind == "onto.expand"
+                {
+                    error.to_string()
+                } else {
+                    "Resource unavailable. The requested operation was not executed.".to_owned()
+                };
                 if error.is::<InferenceFailure>() {
                     inference_failure = Some(error);
                 }
-                Some("Resource unavailable. The requested operation was not executed.".to_owned())
+                Some(feedback)
             }
         };
         execute_action(app, id, action, failure).await?;
@@ -1281,21 +1387,37 @@ async fn execute_action(
     action: Action,
     failure: Option<String>,
 ) -> Result<()> {
-    let mut world = app.store.lock().unwrap().load(id)?.world;
+    let run = app.store.lock().unwrap().load(id)?;
+    let feedback = failure.map(|error| {
+        if frontier::story_executor::enabled(&run.world)
+            && action.kind == "onto.expand"
+            && tools::validate_action(&action).is_ok()
+            && frontier::story_executor::check_progress(&run.world, &action).is_ok()
+        {
+            frontier::story_executor::expansion_failure(&run, &action, &error)
+        } else if frontier::story_executor::enabled(&run.world) {
+            frontier::story_executor::input_failure(&error)
+        } else {
+            json!({"error":error})
+        }
+    });
+    let mut world = run.world;
     // Hosted probes and shell commands are blocking work. Keep them off Tokio
     // workers and release the database so polling and pause remain responsive.
     let (world, action, result) = tokio::task::spawn_blocking(move || {
-        let result = if let Some(error) = failure {
+        let result = if let Some(feedback) = feedback {
             match tools::advance_action_time(&mut world, &action) {
-                Ok(()) => json!({"error":error}),
+                Ok(()) => feedback,
                 Err(clock_error) => {
-                    json!({"error":format!("{error}; world advancement failed: {clock_error}")})
+                    json!({"error":format!("{}; world advancement failed: {clock_error}", feedback["error"])})
                 }
             }
         } else {
-            world
-                .apply(&action)
-                .unwrap_or_else(|e| json!({"error":e.to_string()}))
+            match world.apply(&action) {
+                Ok(result) => result,
+                Err(error) if frontier::story_executor::enabled(&world) => frontier::story_executor::input_failure(&error.to_string()),
+                Err(error) => json!({"error":error.to_string()}),
+            }
         };
         (world, action, result)
     })
@@ -1304,7 +1426,14 @@ async fn execute_action(
     // Preserve a pause recorded while the action was executing.
     let mut run = store.load(id)?;
     run.world = world;
-    finish_action(&mut store, &mut run, action, result)
+    finish_action(&mut store, &mut run, action, result)?;
+    ensure!(
+        !frontier::story_executor::enabled(&run.world)
+            || frontier::story_executor::correction_streak(&run.world)
+                < frontier::story_executor::CORRECTION_LIMIT,
+        "Story review paused after three consecutive invalid actions. The errors are recorded; correct the inputs before explicitly resuming"
+    );
+    Ok(())
 }
 
 async fn construct(app: &App, id: &str, action: &Action) -> Result<()> {
@@ -1533,6 +1662,11 @@ fn inference_request(run: &Run, role: &str, system: &str, input: &Value) -> Resu
             "Provider endpoint is unresolved; validate settings before inference"
         );
         settings.apply(&mut request);
+    } else if model == "openai/gpt-6.1-sol" {
+        // CLI/API callers can omit settings. Match the new draft defaults while
+        // retaining the legacy request shape for other saved model choices.
+        request.as_object_mut().unwrap().remove("temperature");
+        request["max_tokens"] = json!(4096);
     }
     if role == "actor" && run.config.structured_actions {
         let definitions = &run
@@ -1541,7 +1675,18 @@ fn inference_request(run: &Run, role: &str, system: &str, input: &Value) -> Resu
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("Structured actions require general tools"))?
             .definitions;
-        request["response_format"] = action_transport::response_format(definitions)?;
+        let mut definitions = if frontier::story_executor::enabled(&run.world) {
+            frontier::story_executor::available_definitions(run)
+        } else {
+            definitions.clone()
+        };
+        if run.world.review_context && input["review_budget"]["finish_only"] == true {
+            definitions
+                .as_array_mut()
+                .unwrap()
+                .retain(|d| d["name"] == "finish");
+        }
+        request["response_format"] = action_transport::response_format(&definitions)?;
         let transport = if frontier::story_executor::enabled(&run.world) {
             action_transport::STORY_INSTRUCTIONS
         } else {
@@ -1570,7 +1715,14 @@ fn parse_actor_action(run: &Run, response: &str) -> Result<Action> {
         .as_ref()
         .ok_or_else(|| anyhow::anyhow!("Structured actions require general tools"))?
         .definitions;
-    action_transport::parse(response, definitions)
+    if frontier::story_executor::enabled(&run.world) {
+        // Recognize saved tools even when temporarily withheld by the progress
+        // guard. Execution records a bounded corrective observation instead of
+        // treating an otherwise valid envelope as a fatal transport failure.
+        action_transport::decode(response, definitions)
+    } else {
+        action_transport::parse(response, definitions)
+    }
 }
 
 fn actor_system(run: &Run) -> &str {
@@ -1589,7 +1741,7 @@ fn actor_system(run: &Run) -> &str {
 async fn prepare_memory(app: &App, id: &str) -> Result<()> {
     loop {
         let run = app.store.lock().unwrap().load(id)?;
-        if run.config.demo {
+        if run.config.demo || run.world.review_context {
             return Ok(());
         }
         let Some(policy) = &run.config.memory else {
@@ -1672,6 +1824,16 @@ async fn infer(app: &App, id: &str, role: &str, system: &str, input: Value) -> R
         }
     }
 }
+fn inference_reservation(request: &Value) -> Result<f64> {
+    // Keep the existing conservative price/byte bound and minimum reservation.
+    Ok(
+        (serde_json::to_vec(request)?.len() as f64 * frontier::INPUT_USD_PER_MILLION / 1_000_000.0
+            + request["max_tokens"].as_u64().unwrap() as f64 * frontier::OUTPUT_USD_PER_MILLION
+                / 1_000_000.0)
+            .max(0.10),
+    )
+}
+
 async fn infer_attempt(
     app: &App,
     id: &str,
@@ -1689,13 +1851,7 @@ async fn infer_attempt(
             "Inference call limit exhausted"
         );
         let request = inference_request(&run, role, system, &input)?;
-        // Preserve the minimum reservation, accounting for larger configured completions.
-        let reservation = (serde_json::to_vec(&request)?.len() as f64
-            * frontier::INPUT_USD_PER_MILLION
-            / 1_000_000.0
-            + request["max_tokens"].as_u64().unwrap() as f64 * frontier::OUTPUT_USD_PER_MILLION
-                / 1_000_000.0)
-            .max(0.10);
+        let reservation = inference_reservation(&request)?;
         ensure!(
             run.charged + run.reserved + reservation <= run.config.dollar_limit + 1e-9,
             "Insufficient inference budget for the maximum-cost reservation"

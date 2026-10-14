@@ -190,14 +190,6 @@ pub fn publish(world: &mut World, request: &Request, resource: &Resource) -> Res
         .ontology
         .as_mut()
         .ok_or_else(|| anyhow::anyhow!("No institution"))?;
-    let policy = state
-        .generation
-        .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("Generation disabled"))?;
-    ensure!(
-        state.modules.len() < policy.max_modules,
-        "Module budget exhausted"
-    );
     let path = ontology::route(&resource.target)
         .ok_or_else(|| anyhow::anyhow!("Invalid institution target"))?;
     let (key, route) = module_path(&path).ok_or_else(|| anyhow::anyhow!("Invalid module path"))?;
@@ -207,8 +199,36 @@ pub fn publish(world: &mut World, request: &Request, resource: &Resource) -> Res
             && !state.modules.contains_key(key),
         "Invalid or committed module"
     );
+    add_module(state, key, &payload.source, payload.agent_state)
+}
+
+/// Trusted seed setup and generated publication use the same compiler,
+/// foundation and declared-agent-state checks. No inference is performed here.
+pub(crate) fn add_module(
+    state: &mut State,
+    key: &str,
+    module_source: &str,
+    agent_state: Option<crate::agent_state::Declaration>,
+) -> Result<()> {
     ensure!(
-        state.definition.agent_state.is_none() || payload.agent_state.is_some(),
+        module_path(&format!("/modules/{key}")) == Some((key, "/")),
+        "Invalid module name"
+    );
+    ensure!(
+        !module_source.is_empty() && module_source.len() <= 32768,
+        "Module source exceeds bounds"
+    );
+    let policy = state
+        .generation
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("Generation disabled"))?;
+    ensure!(
+        state.modules.len() < policy.max_modules,
+        "Module budget exhausted"
+    );
+    ensure!(!state.modules.contains_key(key), "Module already exists");
+    ensure!(
+        state.definition.agent_state.is_none() || agent_state.is_some(),
         "Generated module must explicitly declare agent_state.fields (empty when no new agent state is needed)"
     );
     let mut source = state.definition.source.clone();
@@ -216,7 +236,7 @@ pub fn publish(world: &mut World, request: &Request, resource: &Resource) -> Res
         !source.contains_key("generated.onto"),
         "Foundation reserves generated.onto"
     );
-    source.insert("generated.onto".into(), payload.source);
+    source.insert("generated.onto".into(), module_source.into());
     let response = ontology::bridge(
         json!({"operation":"initialize","source":source,"foundation":state.definition.source,"actor":state.definition.actor,"epoch":state.definition.epoch,"elapsed_seconds":0}),
         &state.runtime_sha256,
@@ -233,7 +253,7 @@ pub fn publish(world: &mut World, request: &Request, resource: &Resource) -> Res
     );
     let mut definition = state.definition.clone();
     definition.source = serde_json::from_value(response["source"].clone())?;
-    definition.agent_state = payload.agent_state;
+    definition.agent_state = agent_state;
     if let Some(shape) = &definition.agent_state {
         ensure!(
             shape.fields.iter().all(|field| !state

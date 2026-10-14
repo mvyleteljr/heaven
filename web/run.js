@@ -13,6 +13,8 @@ export const templates = [
   { key: "bellwether", name: "Harbor Works · original Rust", endpoint: "bellwether", seed: "bellwether-seed" },
   { key: "institutions", name: "Onto · Accounts", template: "accounts" },
   { key: "harbor_onto", name: "Onto · Harbor Works", template: "harbor" },
+  { key: "harbor_review", name: "Harbor Works · Story review", template: "harbor-review" },
+  { key: "harbor_review_v2", name: "Harbor Works · Story review v2", template: "harbor-review-v2" },
   { key: "institutions_expansion", name: "Onto · Missing domain demo", template: "expansion-demo" },
   { key: "institutions_generated", name: "Onto · Generated company", template: "generative" },
   { key: "onto_review", name: "Onto · Story review", template: "story-review" },
@@ -21,9 +23,9 @@ export const templates = [
 export function templateConfig(template, seed) {
   const business = template.key === "bellwether" || template.template === "harbor";
   const config = {
-    actor_model: "openai/gpt-4.1-mini", world_model: "openai/gpt-4.1-mini", provider: "openai",
-    actor_settings: { provider: "openrouter", temperature: 0.7, max_tokens: 1024, reasoning_effort: null },
-    generator_settings: { provider: "openrouter", temperature: 0.7, max_tokens: 1024, reasoning_effort: null },
+    actor_model: "openai/gpt-6.1-sol", world_model: "openai/gpt-6.1-sol", provider: "openai",
+    actor_settings: { provider: "openrouter", temperature: null, max_tokens: 4096, reasoning_effort: null },
+    generator_settings: { provider: "openrouter", temperature: null, max_tokens: 4096, reasoning_effort: null },
     action_limit: business ? 100 : template.template ? 30 : 20,
     expansion_limit: 10, call_limit: business ? 120 : template.template ? 180 : 40,
     dollar_limit: template.template === "accounts" ? 0.25 : 1,

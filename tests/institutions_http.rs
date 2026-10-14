@@ -117,6 +117,18 @@ async fn story_review_saves_its_restricted_interface_without_starting_inference(
         vec!["onto.inspect", "onto.execute", "onto.expand", "finish"]
     );
     assert_eq!(run["world"]["ontology"]["generation"], seed["generation"]);
+    assert_eq!(seed["generation"]["repair_attempts"], 2);
+    assert_eq!(
+        run["world"]["ontology"]["modules"]["repair"],
+        seed["world"]["ontology"]["modules"]["repair"]
+    );
+    assert_eq!(
+        run["world"]["ontology"]["modules"]["repair"]["stories"]
+            .as_array()
+            .unwrap()
+            .len(),
+        5
+    );
     assert!(run["world"]["hosting"].is_null());
     assert!(
         run["config"]["actor_system_prompt"]
@@ -124,6 +136,107 @@ async fn story_review_saves_its_restricted_interface_without_starting_inference(
             .unwrap()
             .contains("institution")
     );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "Requires the pinned optional Onto bundle"]
+async fn harbor_review_saves_fixed_direct_stories_and_rejects_identity_or_source_changes()
+-> Result<()> {
+    for (template, experiment, name) in [
+        (
+            "harbor-review",
+            "harbor_review",
+            "Harbor Works · Story review",
+        ),
+        (
+            "harbor-review-v2",
+            "harbor_review_v2",
+            "Harbor Works · Story review v2",
+        ),
+    ] {
+        let dir = tempfile::tempdir()?;
+        let database = dir.path().join("harbor-review.sqlite");
+        let runtime = std::env::var("FRONTIER_ONTO_RUNTIME")?;
+        let (handle, client, base) = server(&database, Some(Path::new(&runtime))).await?;
+        let seed = read(
+            &client,
+            format!("{base}/institution-seed?template={template}"),
+        )
+        .await?;
+        assert_eq!(seed["runtime_available"], true, "{seed}");
+        assert_eq!(seed["name"], name);
+        assert_eq!(
+            seed["world"]["goal"]
+                .as_str()
+                .unwrap()
+                .contains("This is revision v2"),
+            template == "harbor-review-v2"
+        );
+        assert_eq!(seed["config"]["actor_user_prompt"], seed["world"]["goal"]);
+        assert!(seed["generation"].is_null());
+        assert_eq!(seed["config"]["expansion_limit"], 0);
+        assert_eq!(seed["config"]["actor_model"], "openai/gpt-6.1-sol");
+        assert_eq!(seed["config"]["world_model"], "openai/gpt-6.1-sol");
+        let request = json!({"template":template, "institution":seed["institution"], "config":config(seed["world"]["goal"].as_str().unwrap())});
+        for changed in ["actor", "epoch", "source", "agent_state", "generation"] {
+            let mut invalid = request.clone();
+            match changed {
+                "actor" => invalid["institution"]["actor"] = json!("Business:Quay Hall"),
+                "epoch" => invalid["institution"]["epoch"] = json!("2026-01-01T00:00:00Z"),
+                "agent_state" => invalid["institution"]["agent_state"] = json!({"fields":[]}),
+                "source" => {
+                    invalid["institution"]["source"]["review-fixtures.onto"] =
+                        json!("// missing fixtures")
+                }
+                _ => invalid["generation"] = json!({"brief":"Rewrite Harbor", "max_modules":4}),
+            }
+            assert_eq!(
+                post(&client, format!("{base}/institutions"), &invalid)
+                    .send()
+                    .await?
+                    .status(),
+                400,
+                "{changed}"
+            );
+        }
+        assert!(
+            read(&client, format!("{base}/runs"))
+                .await?
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
+        let run: Value = post(&client, format!("{base}/institutions"), &request)
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        assert_paused(&run);
+        assert_eq!(run["name"], name);
+        assert_eq!(run["experiment"], experiment);
+        assert_eq!(run["world"]["ontology"], seed["world"]["ontology"]);
+        assert!(run["world"]["hosting"].is_null());
+        assert!(run["world"]["harbor_onto"] != true);
+        assert_eq!(
+            run["world"]["tools"]["definitions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|d| d["name"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            vec!["onto.execute", "finish"]
+        );
+        let id = run["id"].as_str().unwrap();
+        let before = read(&client, format!("{base}/runs/{id}")).await?;
+        drop(handle);
+        let (_handle, client, base) = server(&database, Some(Path::new(&runtime))).await?;
+        let after = read(&client, format!("{base}/runs/{id}")).await?;
+        assert_eq!(after["run"], before["run"]);
+        assert_eq!(after["hash"], before["hash"]);
+        assert_paused(&after["run"]);
+    }
     Ok(())
 }
 
@@ -320,7 +433,14 @@ async fn institution_templates_validate_and_create_independent_paused_runs() -> 
 async fn missing_runtime_preserves_template_source_and_existing_seed_routes() -> Result<()> {
     let dir = tempfile::tempdir()?;
     let (_server, client, base) = server(&dir.path().join("missing-runtime.sqlite"), None).await?;
-    for template in ["accounts", "harbor", "generative", "story-review"] {
+    for template in [
+        "accounts",
+        "harbor",
+        "generative",
+        "story-review",
+        "harbor-review",
+        "harbor-review-v2",
+    ] {
         let seed = read(
             &client,
             format!("{base}/institution-seed?template={template}"),

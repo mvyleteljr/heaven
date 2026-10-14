@@ -16,6 +16,7 @@ pub mod hosting;
 pub mod institutions;
 pub mod memory;
 pub mod ontology;
+pub mod review_context;
 pub mod story_executor;
 pub use experiments::flowers;
 pub mod tools;
@@ -49,6 +50,10 @@ pub struct Document {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct World {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub review_context: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub harbor_review: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub harbor_onto: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ontology: Option<ontology::State>,
@@ -70,6 +75,8 @@ pub struct World {
 impl Default for World {
     fn default() -> Self {
         Self {
+            review_context: false,
+            harbor_review: false,
             harbor_onto: false,
             ontology: None,
             business: None,
@@ -332,8 +339,8 @@ impl Default for Config {
             actor_user_prompt: None,
             generator_settings: None,
             actor_settings: None,
-            actor_model: "openai/gpt-4.1-mini".into(),
-            world_model: "openai/gpt-4.1-mini".into(),
+            actor_model: "openai/gpt-6.1-sol".into(),
+            world_model: "openai/gpt-6.1-sol".into(),
             provider: "openai".into(),
             action_limit: 100,
             expansion_limit: 20,
@@ -627,7 +634,7 @@ impl Store {
     pub fn frames_after(&self, id: &str, seq: u64) -> Result<Vec<Value>> {
         let mut stmt = self
             .conn
-            .prepare("SELECT event,state FROM events WHERE run=? AND seq>? AND json_extract(event,'$.kind') IN ('seed','fork','outcome','expansion','denied','error','intervention','recovery','action_blocked','action_ready') ORDER BY seq")?;
+            .prepare("SELECT event,state FROM events WHERE run=? AND seq>? AND json_extract(event,'$.kind') IN ('seed','fork','outcome','expansion','denied','error','intervention','recovery','action_blocked','action_ready','review_report') ORDER BY seq")?;
         let rows = stmt.query_map(params![id, i64::try_from(seq)?], |r| {
             Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
         })?;
@@ -646,6 +653,7 @@ impl Store {
                 "recovery",
                 "action_blocked",
                 "action_ready",
+                "review_report",
             ]
             .contains(&event.kind.as_str())
             {

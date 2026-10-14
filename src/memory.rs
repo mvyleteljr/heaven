@@ -69,6 +69,10 @@ pub struct State {
 }
 
 pub fn configure(run: &mut Run) -> Result<()> {
+    // Authored reviews use exact deterministic projections, never paid summaries.
+    if run.world.review_context {
+        return Ok(());
+    }
     if run.config.memory.is_none() {
         return Ok(());
     }
@@ -103,7 +107,24 @@ pub fn indexed(history: &[Value], start: usize, end: usize) -> Vec<Value> {
         .collect()
 }
 pub fn observation(run: &Run) -> Value {
+    if run.world.review_context {
+        return crate::review_context::observation(run);
+    }
     let mut result = run.world.observation();
+    if crate::story_executor::enabled(&run.world) {
+        result["tools"] = crate::story_executor::available_definitions(run);
+        result["generation_status"] = crate::story_executor::generation_status(run);
+        result["review_progress"] = crate::story_executor::progress(run);
+        result["available_modules"] = json!(
+            run.world
+                .ontology
+                .as_ref()
+                .unwrap()
+                .modules
+                .keys()
+                .collect::<Vec<_>>()
+        );
+    }
     if let Some(memory) = &run.memory {
         result["history"] = json!(indexed(
             &run.world.transcript,
