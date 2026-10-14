@@ -1326,7 +1326,7 @@ fn inference_request(run: &Run, role: &str, system: &str, input: &Value) -> Resu
     } else {
         &run.config.world_model
     };
-    let mut request = json!({"model":model,"messages":[{"role":"system","content":system},{"role":"user","content":serde_json::to_string(&input)?}],"temperature":0.7,"max_tokens":1024,"response_format":{"type":"json_object"},"provider":{"only":[run.config.provider],"allow_fallbacks":false,"require_parameters":true,"max_price":{"prompt":2,"completion":8}},"usage":{"include":true}});
+    let mut request = json!({"model":model,"messages":[{"role":"system","content":system},{"role":"user","content":serde_json::to_string(&input)?}],"temperature":0.7,"max_tokens":1024,"response_format":{"type":"json_object"},"provider":{"only":[run.config.provider],"allow_fallbacks":false,"require_parameters":true,"max_price":{"prompt":frontier::INPUT_USD_PER_MILLION,"completion":frontier::OUTPUT_USD_PER_MILLION}},"usage":{"include":true}});
     let settings = if role == "actor" || role == "memory" {
         &run.config.actor_settings
     } else {
@@ -1504,8 +1504,11 @@ async fn infer_attempt(
         );
         let request = inference_request(&run, role, system, &input)?;
         // Preserve the minimum reservation, accounting for larger configured completions.
-        let reservation = (serde_json::to_vec(&request)?.len() as f64 * 0.000002
-            + request["max_tokens"].as_u64().unwrap() as f64 * 0.000008)
+        let reservation = (serde_json::to_vec(&request)?.len() as f64
+            * frontier::INPUT_USD_PER_MILLION
+            / 1_000_000.0
+            + request["max_tokens"].as_u64().unwrap() as f64 * frontier::OUTPUT_USD_PER_MILLION
+                / 1_000_000.0)
             .max(0.10);
         ensure!(
             run.charged + run.reserved + reservation <= run.config.dollar_limit + 1e-9,

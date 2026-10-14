@@ -263,3 +263,30 @@ fn growth_keeps_generator_context_bounded_and_measures_latency() -> Result<()> {
 fn context_size(run: &Run) -> Result<usize> {
     Ok(serde_json::to_vec(&institutions::context(run)?)?.len())
 }
+
+#[test]
+#[ignore = "Requires optional Onto bundle; scripts/dev check-jit"]
+fn generator_reference_lifecycle_and_timestamp_example_executes() -> Result<()> {
+    let mut run = seeded()?;
+    let req = request(&run, "reference")?;
+    construction::publish(
+        &mut run,
+        &req,
+        &proposal(&req, include_str!("../src/onto_example.onto")),
+    )?;
+    let created = command(
+        &mut run,
+        "reference",
+        json!({"command_id":"create","story":"Operator creates Ticket","fields":{"name":"example"}}),
+    )?;
+    assert_eq!(created["committed"], true);
+    assert_eq!(
+        command(
+            &mut run,
+            "reference",
+            json!({"command_id":"close","story":"Operator closes Ticket","object":created["created"]["id"]})
+        )?["committed"],
+        true
+    );
+    Ok(())
+}

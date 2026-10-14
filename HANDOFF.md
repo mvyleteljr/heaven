@@ -145,10 +145,10 @@ requiring every department and capability to be implemented in advance.
 ## Watching the open-discovery experiment
 
 `examples/jit/open-discovery-watch.json` is the current condition: live GPT-4.1
-actor, Claude Haiku 4.5 generator (8,192 output tokens), rolling memory, up to
+actor, Claude Sonnet 4.6 generator (8,192 output tokens), rolling memory, up to
 100 actions / 160 total calls / eight construction attempts, and two validation
 repairs per attempt. The user authorized **$5 total across these attempts**.
-Six stopped diagnostics used $0.93297875; the current run is capped at $3.80.
+Eight stopped diagnostics used $1.55300775; the current run is capped at $3.00.
 Do not resume earlier conditions alongside it against the same allowance.
 
 The actor chooses three capabilities, compares operations before/after local
@@ -160,20 +160,20 @@ local details are design choices, not missing requirements. The authored brief
 bounds each module to a few objects. Foundation protection and executable
 validation remain unchanged. Completion and improvement are not assumed.
 
-The current October 14 run is `03da9320-7d6e-4253-8968-f05c7dbe177a` in the
-normal Compose database. [Watch locally](http://127.0.0.1:3000/?run=03da9320-7d6e-4253-8968-f05c7dbe177a).
+The current October 14 run is `22f5fa76-5e42-43dc-9473-c676cb2b7673` in the
+normal Compose database. [Watch locally](http://127.0.0.1:3000/?run=22f5fa76-5e42-43dc-9473-c676cb2b7673).
 The viewer shows generated capabilities, facts, executable operations, source,
 institutional changes, call counts and charged + reserved spending. It polls
 automatically. Pause finishes the in-flight action; the scrubber inspects history,
 and Latest resumes following the trace. The launch manifest is
-`data/audits/open-discovery-g-watch.json`; query its audit endpoint for current
+`data/audits/open-discovery-i-watch.json`; query its audit endpoint for current
 status. This section records launch, not a passing result. Do not restart the
 server or change the experiment while it runs.
 
 For another checkout, POST the example JSON to `/api/institutions` with
 `Content-Type: application/json` and `X-Frontier-Client: research-ui`, then open
 `/?run=RETURNED_ID` and click Run. Agree on the budget first; this example allows
-paid inference up to $3.80. Run databases are local and do not arrive with Git.
+paid inference up to $3.00. Run databases are local and do not arrive with Git.
 
 `examples/jit/open-discovery-status.json` preserves stopped-condition evidence:
 GPT-4.1 returned unsupported syntax even with the pinned grammar; GPT-5.4 Mini
@@ -181,14 +181,21 @@ exhausted reasoning output at 8,192 and then 16,384 tokens; Claude Haiku 4.5
 refused unspecified workflows even when synthesis was authorized in the brief.
 The latter exposed the overly conservative top-level generator role, corrected
 for the current condition. These are sequential debugging conditions, not a
-controlled model comparison. None of the six stopped diagnostics published a
-module. Keep this separate from the earlier successful fixed-interface proof.
+controlled model comparison. None of the eight stopped diagnostics published a
+module. Conditions B–H also received an incorrect quoted-enum declaration
+example added in Frontier’s authoring guide. This was our guidance error, not
+evidence that valid Onto source was rejected. The current condition corrects
+it and includes a generic lifecycle/timestamp example tested by the actual
+interpreter (`src/onto_example.onto`). Keep this separate from the earlier successful fixed-interface proof.
 
 The maintained grammar is pinned in `src/onto_grammar.md`. Configurable output
 limits now extend to 32,768, subject to endpoint support and unchanged worst-case
 cost reservations. Free validation passed: 49 core Rust tests, 7 web tests,
 formatting, Clippy and Linux sandbox doctor. Optional generator/repair tests
-passed again after the system-role change.
+passed again after the system-role change and corrected authoring example.
+The provider price ceilings are now $3/M input and $15/M output to permit Sonnet;
+endpoint validation, outbound routing caps and worst-case reservations share
+the same constants. Dollar/call limits remain enforced before every call.
 
 ## Run locally
 

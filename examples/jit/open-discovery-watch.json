@@ -1,10 +1,10 @@
 {
-  "name": "Open discovery \u00b7 device repair \u00b7 world builder",
+  "name": "Open discovery \u00b7 device repair \u00b7 verified authoring guide",
   "config": {
     "demo": false,
     "structured_actions": true,
     "actor_model": "openai/gpt-4.1",
-    "world_model": "anthropic/claude-haiku-4.5",
+    "world_model": "anthropic/claude-sonnet-4.6",
     "provider": "openai",
     "actor_settings": {
       "provider": "openrouter",
@@ -21,7 +21,7 @@
     "action_limit": 100,
     "expansion_limit": 8,
     "call_limit": 160,
-    "dollar_limit": 3.8,
+    "dollar_limit": 3.0,
     "context_limit_bytes": 256000,
     "memory": {
       "recent_entries": 12,

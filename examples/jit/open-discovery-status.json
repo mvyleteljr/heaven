@@ -369,17 +369,129 @@
           "seq": 75
         }
       ]
+    },
+    {
+      "condition": "G",
+      "run_id": "03da9320-7d6e-4253-8968-f05c7dbe177a",
+      "status": "paused",
+      "spending": {
+        "calls_including_inherited": 13,
+        "calls_recorded_on_this_branch": {
+          "actor": 4,
+          "world": 9
+        },
+        "charged_usd": 0.12745800000000002,
+        "limit_usd": 3.8,
+        "uncertain_reserved_usd": 0.0
+      },
+      "construction": {
+        "attempts_including_inherited": 3,
+        "published_on_this_branch": 0,
+        "rejected_on_this_branch": 3,
+        "timings": []
+      },
+      "integrity": {
+        "attempted_actions": 4,
+        "completed_observations": 4,
+        "events_contiguous": true,
+        "last_event_matches_run": true,
+        "memory_prefix_valid": true,
+        "unresolved_action_attempts": 0
+      },
+      "failures": [
+        {
+          "kind": "construction_rejected",
+          "message": "Onto refused: \"generated.onto:52: cannot read the value \\\"now\\\" \u2014 quote strings, or name a declared entity\"",
+          "phase": null,
+          "role": null,
+          "seq": 23
+        },
+        {
+          "kind": "construction_rejected",
+          "message": "Onto refused: \"generated.onto:31: cannot read the value \\\"now\\\" \u2014 quote strings, or name a declared entity\"",
+          "phase": null,
+          "role": null,
+          "seq": 40
+        },
+        {
+          "kind": "construction_rejected",
+          "message": "Onto refused: \"generated.onto:36: cannot read the value \\\"now\\\" \u2014 quote strings, or name a declared entity\"",
+          "phase": null,
+          "role": null,
+          "seq": 58
+        }
+      ]
+    },
+    {
+      "condition": "H",
+      "run_id": "90770782-deba-42b9-984c-736ad2558170",
+      "status": "paused",
+      "spending": {
+        "calls_including_inherited": 17,
+        "calls_recorded_on_this_branch": {
+          "actor": 5,
+          "world": 12
+        },
+        "charged_usd": 0.4925709999999999,
+        "limit_usd": 3.5,
+        "uncertain_reserved_usd": 0.0
+      },
+      "construction": {
+        "attempts_including_inherited": 4,
+        "published_on_this_branch": 0,
+        "rejected_on_this_branch": 4,
+        "timings": []
+      },
+      "integrity": {
+        "attempted_actions": 5,
+        "completed_observations": 5,
+        "events_contiguous": true,
+        "last_event_matches_run": true,
+        "memory_prefix_valid": true,
+        "unresolved_action_attempts": 0
+      },
+      "failures": [
+        {
+          "kind": "construction_rejected",
+          "message": "Onto refused: \"generated.onto:39: \\\"received\\\" is not a declared value of DeviceTicket.status (declared: \\\"received\\\" | \\\"assessed\\\" | \\\"approved\\\" | \\\"rejected\\\" | \\\"completed\\\"); statuses are never extended from a beat\"",
+          "phase": null,
+          "role": null,
+          "seq": 23
+        },
+        {
+          "kind": "construction_rejected",
+          "message": "Onto refused: \"generated.onto:82: cannot read the value \\\"RepairPolicy.maxCostApproval\\\" \u2014 quote strings, or name a declared entity\"",
+          "phase": null,
+          "role": null,
+          "seq": 40
+        },
+        {
+          "kind": "construction_rejected",
+          "message": "Onto refused: \"generated.onto:38: \\\"open\\\" is not a declared value of RepairJob.status (declared: \\\"open\\\" | \\\"approved\\\" | \\\"in-progress\\\" | \\\"completed\\\" | \\\"cancelled\\\"); statuses are never extended from a beat\"",
+          "phase": null,
+          "role": null,
+          "seq": 57
+        },
+        {
+          "kind": "construction_rejected",
+          "message": "Onto refused: \"generated.onto:39: \\\"received\\\" is not a declared value of DeviceTicket.status (declared: \\\"received\\\" | \\\"assessed\\\" | \\\"approved\\\" | \\\"rejected\\\" | \\\"completed\\\"); statuses are never extended from a beat\"",
+          "phase": null,
+          "role": null,
+          "seq": 75
+        }
+      ]
     }
   ],
   "active_launch": {
-    "run_id": "03da9320-7d6e-4253-8968-f05c7dbe177a",
-    "url": "http://127.0.0.1:3000/?run=03da9320-7d6e-4253-8968-f05c7dbe177a",
-    "started_at": "2026-10-14T16:56:51.724732+00:00",
-    "source_sha256": "bad549a363ec4eb508c431912496fea053241e96caf969337ffefcf52b964cc2",
+    "run_id": "22f5fa76-5e42-43dc-9473-c676cb2b7673",
+    "url": "http://127.0.0.1:3000/?run=22f5fa76-5e42-43dc-9473-c676cb2b7673",
+    "started_at": "2026-10-14T17:05:01.129506+00:00",
+    "source_sha256": "4b0c6d5e5c4c6a1e802a2c9c2a2291582c255ba742498ad137de8050cc3e407b",
     "authorized_total_usd": 5,
-    "previous_attempts_accounted_usd": 0.93297875,
-    "run_cap_usd": 3.8,
-    "condition": "Explicit fictional world-builder system role; GPT-4.1 actor, Claude Haiku 4.5 generator, pinned grammar, synthetic local detail permission",
+    "previous_attempts_accounted_usd": 1.55300775,
+    "run_cap_usd": 3,
+    "condition": "Sonnet 4.6 world builder with corrected enum/timestamp/write guidance and an interpreter-tested generic lifecycle example; GPT-4.1 actor",
     "status": "running"
-  }
+  },
+  "diagnostic_caveat": "Conditions B-H included an incorrect quoted-enum declaration example in Frontier guidance; corrected in I and a real-interpreter lifecycle/timestamp example test was added. These sequential debugging conditions are not a controlled model comparison."
 }
