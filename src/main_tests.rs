@@ -2,6 +2,142 @@ use super::*;
 
 #[tokio::test]
 #[ignore = "Requires optional Onto bundle; scripts/dev check-jit"]
+async fn jit_expansion_demo_seed_generates_retries_and_commits_a_ticket() -> Result<()> {
+    let preview = experiments::institutions::preview("expansion-demo")?;
+    assert_eq!(preview["runtime_available"], true);
+    assert_eq!(preview["generation"]["max_modules"], 1);
+    assert_eq!(preview["config"]["dollar_limit"], 0.5);
+    let mut config: Config = serde_json::from_value(preview["config"].clone())?;
+    config.actor_system_prompt = Some(preview["system"].as_str().unwrap().into());
+    for settings in [&mut config.actor_settings, &mut config.generator_settings] {
+        settings.as_mut().unwrap().endpoint = "mock".into();
+    }
+    let (mut app, mut run) = app(config)?;
+    run.world = serde_json::from_value(preview["world"].clone())?;
+    assert!(run.world.ontology.as_ref().unwrap().modules.is_empty());
+    run.experiment = Some(experiments::Experiment::Institutions);
+    app.store
+        .lock()
+        .unwrap()
+        .commit(&mut run, "seed", "Expansion demo", json!({}))?;
+    let boundary = "https://institutions.local/modules/repair-intake";
+    let actions = vec![
+        json!({"kind":"http.request","inputs":{"method":"GET","url":boundary}}),
+        json!({"kind":"http.request","inputs":{"method":"GET","url":format!("{boundary}/model")}}),
+        json!({"kind":"http.request","inputs":{"method":"GET","url":format!("{boundary}/facts")}}),
+        json!({"kind":"http.request","inputs":{"method":"POST","url":format!("{boundary}/commands"),"body":json!({"command_id":"intake-1","story":"Operator creates RepairRequest for IntakeDesk","participants":{"IntakeDesk":"IntakeDesk:main"},"fields":{"description":"Cracked laptop screen"}}).to_string()}}),
+        json!({"kind":"http.request","inputs":{"method":"GET","url":format!("{boundary}/facts")}}),
+        json!({"kind":"finish","inputs":{"message":"Verified the saved repair request."}}),
+    ];
+    let count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let generated = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let (c, g) = (count.clone(), generated.clone());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    app.inference_url = format!("http://{}/completion", listener.local_addr()?);
+    let router = Router::new().route("/completion", post(move |Json(request): Json<Value>| {
+        let (c, g, actions) = (c.clone(), g.clone(), actions.clone());
+        async move {
+            let output = if request["messages"][0]["content"] == frontier::institutions::GENERATOR {
+                g.fetch_add(1, Ordering::SeqCst);
+                json!({"source":include_str!("../examples/jit/test-repair-intake.onto"),"agent_state":{"fields":[]},"error":null})
+            } else {
+                assert!(request.to_string().contains("Your first action must be http.request"));
+                typed_actor_output(&request, &actions[c.fetch_add(1, Ordering::SeqCst)])
+            };
+            Json(json!({"usage":{"cost":0.0001},"choices":[{"finish_reason":"stop","message":{"content":output.to_string()}}]}))
+        }
+    }));
+    let _mock = Mock(tokio::spawn(async move {
+        axum::serve(listener, router).await.unwrap();
+    }));
+    for _ in 0..6 {
+        step(&app, &run.id).await?;
+    }
+    let store = app.store.lock().unwrap();
+    let saved = store.load(&run.id)?;
+    assert_eq!(saved.status, "finished");
+    assert_eq!(generated.load(Ordering::SeqCst), 1);
+    assert_eq!(saved.expansions, 1);
+    let frames = store.frames(&run.id)?;
+    let blocked = frames
+        .iter()
+        .find(|f| f["event"]["kind"] == "action_blocked")
+        .unwrap();
+    let ready = frames
+        .iter()
+        .find(|f| f["event"]["kind"] == "action_ready")
+        .unwrap();
+    let completed = frames
+        .iter()
+        .find(|f| {
+            f["event"]["kind"] == "outcome"
+                && f["event"]["evidence"]["action_id"] == blocked["event"]["evidence"]["action_id"]
+        })
+        .unwrap();
+    assert!(blocked["world"]["ontology"]["modules"]["repair-intake"].is_null());
+    assert!(
+        ready["world"]["ontology"]["modules"]["repair-intake"]["definition"]["source"]
+            .to_string()
+            .contains("object RepairRequest")
+    );
+    assert_eq!(
+        blocked["event"]["evidence"]["action"],
+        completed["event"]["evidence"]["action"]
+    );
+    assert_eq!(completed["event"]["evidence"]["result"]["status"], 200);
+    let receipt: Value = serde_json::from_str(
+        saved.world.transcript[3]["result"]["body"]
+            .as_str()
+            .unwrap(),
+    )?;
+    assert_eq!(receipt["committed"], true);
+    let facts: Value = serde_json::from_str(
+        saved.world.transcript[4]["result"]["body"]
+            .as_str()
+            .unwrap(),
+    )?;
+    assert!(facts.to_string().contains("Cracked laptop screen"));
+    assert!(facts.to_string().contains("pending"));
+    assert_eq!(
+        blocked["world"]["ontology"]["agent_state"]["values"]["name"],
+        "Ada"
+    );
+    let module = &saved.world.ontology.as_ref().unwrap().modules["repair-intake"];
+    let empty = json!({"shape":{"fields":[]},"values":{}});
+    assert_eq!(
+        ready["world"]["ontology"]["modules"]["repair-intake"]["agent_state"],
+        empty
+    );
+    assert_eq!(module.agent_state.as_ref().unwrap(), &empty);
+    assert_eq!(facts["agent_state"], empty);
+    assert_eq!(
+        saved.world.observation()["agent_state"]["module:repair-intake"],
+        empty
+    );
+    // The owned desk changes in world state, never in the agent projection.
+    for (snapshot, expected) in [
+        (
+            &ready["world"]["ontology"]["modules"]["repair-intake"]["snapshot"],
+            "ready",
+        ),
+        (&module.snapshot, "registered"),
+    ] {
+        let desk = snapshot["instances"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|record| record["id"] == "IntakeDesk:main")
+            .unwrap();
+        assert_eq!(desk["fields"]["status"], expected);
+    }
+    // Reloaded runs preserve the declaration and live values; prior frames retain the old shape.
+    let reopened: Run = serde_json::from_value(serde_json::to_value(&saved)?)?;
+    assert_eq!(reopened.world, saved.world);
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "Requires optional Onto bundle; scripts/dev check-jit"]
 async fn jit_story_review_uses_direct_tools_and_existing_compiler_pipeline() -> Result<()> {
     let (mut app, mut run) = app(Config {
         demo: false,
@@ -41,7 +177,7 @@ async fn jit_story_review_uses_direct_tools_and_existing_compiler_pipeline() -> 
         async move {
             let output = if request["messages"][0]["content"] == frontier::institutions::GENERATOR {
                 g.fetch_add(1,Ordering::SeqCst);
-                json!({"source":include_str!("../examples/jit/test-capability.onto"),"error":null})
+                json!({"source":include_str!("../examples/jit/test-capability.onto"),"agent_state":{"fields":[]},"error":null})
             } else {
                 assert!(!request["messages"][0]["content"].as_str().unwrap().contains("http.request"));
                 let schema = request["response_format"].to_string();
@@ -61,6 +197,33 @@ async fn jit_story_review_uses_direct_tools_and_existing_compiler_pipeline() -> 
     let saved = store.load(&run.id)?;
     assert_eq!(saved.status, "finished");
     assert_eq!(saved.calls, 6);
+    let frames = store.frames(&run.id)?;
+    let blocked = frames
+        .iter()
+        .find(|f| f["event"]["kind"] == "action_blocked")
+        .unwrap();
+    let ready = frames
+        .iter()
+        .find(|f| f["event"]["kind"] == "action_ready")
+        .unwrap();
+    let completed = frames
+        .iter()
+        .find(|f| {
+            f["event"]["kind"] == "outcome"
+                && f["event"]["evidence"]["action_id"] == blocked["event"]["evidence"]["action_id"]
+        })
+        .unwrap();
+    assert!(blocked["world"]["ontology"]["modules"]["claims"].is_null());
+    assert!(ready["world"]["ontology"]["modules"]["claims"].is_object());
+    assert_eq!(
+        blocked["event"]["evidence"]["action"],
+        ready["event"]["evidence"]["action"]
+    );
+    assert_eq!(
+        blocked["event"]["evidence"]["action"],
+        completed["event"]["evidence"]["action"]
+    );
+    assert_eq!(completed["event"]["evidence"]["result"]["module"], "claims");
     assert_eq!(generated.load(Ordering::SeqCst), 1);
     assert_eq!(saved.expansions, 1);
     assert_eq!(saved.world.transcript[2]["result"]["committed"], true);
@@ -919,7 +1082,7 @@ async fn jit_actor_director_generator_execution_records_one_publication_and_reus
                 g.fetch_add(1,Ordering::SeqCst);
                 assert!(!input.to_string().contains("PRIVATE-ACTOR-GOAL-CANARY"));
                 assert_eq!(request["response_format"]["json_schema"]["strict"],true);
-                json!({"source":include_str!("../examples/jit/test-capability.onto"),"error":null})
+                json!({"source":include_str!("../examples/jit/test-capability.onto"),"agent_state":{"fields":[]},"error":null})
             } else { actions[c.fetch_add(1,Ordering::SeqCst)].clone() };
             Json(json!({"usage":{"cost":0.0001},"choices":[{"finish_reason":"stop","message":{"content":output.to_string()}}]}))
         }

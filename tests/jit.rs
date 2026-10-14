@@ -21,6 +21,7 @@ fn seeded() -> Result<Run> {
         actor: "Operator:Ada".into(),
         epoch: "2026-01-01T00:00:00Z".into(),
         public_facts: true,
+        agent_state: None,
     })?;
     institutions::enable(
         &mut state,
@@ -87,6 +88,7 @@ fn generation_validates_hidden_foundation_stories_before_enabling() -> Result<()
         actor: "Operator:Ada".into(),
         epoch: "2026-01-01T00:00:00Z".into(),
         public_facts: true,
+        agent_state: None,
     })?;
     assert_eq!(
         state.stories,
@@ -118,6 +120,7 @@ fn generation_validates_hidden_foundation_stories_before_enabling() -> Result<()
         actor: "Operator:Ada".into(),
         epoch: "2026-01-01T00:00:00Z".into(),
         public_facts: true,
+        agent_state: None,
     })?;
     institutions::enable(&mut state, policy)?;
     assert!(state.protected_types.contains(&"Reserved".to_string()));
@@ -359,6 +362,56 @@ fn generator_reference_lifecycle_and_timestamp_example_executes() -> Result<()> 
             json!({"command_id":"close","story":"Operator closes Ticket","object":created["created"]["id"]})
         )?["committed"],
         true
+    );
+    Ok(())
+}
+
+#[test]
+#[ignore = "Requires optional Onto bundle; scripts/dev check-jit"]
+fn agent_state_shape_is_validated_atomically_with_module_publication() -> Result<()> {
+    let mut base = seeded()?;
+    let state = base.world.ontology.as_mut().unwrap();
+    let shape = frontier::agent_state::Declaration::identity(&state.definition.actor);
+    state.agent_state = Some(shape.project(&state.definition.actor, &state.snapshot)?);
+    state.definition.agent_state = Some(shape);
+    let source = include_str!("../examples/jit/test-agent-memory.onto");
+    let valid = json!({"fields":[{"key":"last_observation","label":"Last observation","kind":"string","format":"plain","source":{"instance":"AgentMemory:main","field":"lastObservation"}}]});
+    let mut wrong_type = valid.clone();
+    wrong_type["fields"][0]["kind"] = json!("integer");
+    let mut missing = valid.clone();
+    missing["fields"][0]["source"]["field"] = json!("invented");
+    let mut foundation = valid.clone();
+    foundation["fields"][0]["source"] = json!({"instance":"Company:Core","field":"name"});
+    let mut duplicate = valid.clone();
+    duplicate["fields"]
+        .as_array_mut()
+        .unwrap()
+        .push(valid["fields"][0].clone());
+    for invalid in [Value::Null, wrong_type, missing, foundation, duplicate] {
+        let mut run = base.clone();
+        let request = request(&run, "repair-intake")?;
+        let mut candidate = proposal(&request, source);
+        let Outcome::Proposed { resources } = &mut candidate.result else {
+            unreachable!()
+        };
+        resources[0].initial_state["agent_state"] = invalid;
+        assert!(construction::publish(&mut run, &request, &candidate).is_err());
+        assert_eq!(
+            run.world, base.world,
+            "Invalid shapes cannot partially publish state"
+        );
+    }
+    let request = request(&base, "repair-intake")?;
+    let mut candidate = proposal(&request, source);
+    let Outcome::Proposed { resources } = &mut candidate.result else {
+        unreachable!()
+    };
+    resources[0].initial_state["agent_state"] = valid;
+    construction::publish(&mut base, &request, &candidate)?;
+    let module = &base.world.ontology.as_ref().unwrap().modules["repair-intake"];
+    assert_eq!(
+        module.agent_state.as_ref().unwrap()["values"]["last_observation"],
+        "unobserved"
     );
     Ok(())
 }

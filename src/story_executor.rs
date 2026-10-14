@@ -222,7 +222,7 @@ pub fn apply(world: &mut World, action: &Action) -> Result<Value> {
             Ok(json!({"module":module_name,"receipts":state.receipts}))
         }
         Call::Inspect { view, .. } if view == "model" => Ok(
-            json!({"module":module_name,"source":state.definition.source,"stories":state.stories,"execution":"Use onto.execute with the exact story sentence. object is an existing record ID; participants_json maps Story tokens to IDs; fields_json supplies creation fields. Caller identity is fixed."}),
+            json!({"module":module_name,"source":state.definition.source,"stories":state.stories,"agent_state":state.definition.agent_state,"execution":"Use onto.execute with the exact story sentence. object is an existing record ID; participants_json maps Story tokens to IDs; fields_json supplies creation fields. Caller identity is fixed."}),
         ),
         Call::Inspect { .. } | Call::Expand { .. } => Ok(
             json!({"module":module_name,"actor":state.definition.actor,"stories":state.stories,"modules":available,"generation_enabled":generation,"scope":"Module-local mutable facts; shared foundation is read-only. Inspect model and facts before executing Stories."}),

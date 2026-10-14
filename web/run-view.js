@@ -28,15 +28,36 @@ export function experimentName(runOrKey) {
   const run = typeof runOrKey === "object" && runOrKey ? runOrKey : null;
   let key = run?.experiment ?? runOrKey;
   if (key === "institutions" && (run?.world?.ontology?.generation || entries(run?.world?.ontology?.modules).length)) key = "institutions_generated";
-  return ({ flowers: "Flowers for Friday", bellwether: "Harbor Works", institutions: "Onto · Accounts", harbor_onto: "Onto · Harbor Works", institutions_generated: "Onto · Generated company", onto_review: "Onto · Story review", records: "Records", recall: "Archive handoff" })[key] ?? run?.name ?? "Experiment";
+  return ({ flowers: "Flowers for Friday", bellwether: "Harbor Works", institutions: "Onto · Accounts", harbor_onto: "Onto · Harbor Works", institutions_generated: "Onto · Generated company", institutions_expansion: "Onto · Missing domain demo", onto_review: "Onto · Story review", records: "Records", recall: "Archive handoff" })[key] ?? run?.name ?? "Experiment";
 }
 
 export function traceFrames(data) {
-  const frames = list(data?.frames);
-  return frames.filter((frame) => {
+  const workflows = new Map();
+  return list(data?.frames).filter((frame) => {
     const kind = frame.event?.kind;
     return !!frame.event?.evidence?.action || ["seed", "fork", "outcome", "expansion", "denied", "error", "recovery", "intervention"].includes(kind);
+  }).map((frame) => {
+    const event = frame.event ?? {}, evidence = event.evidence ?? {};
+    const id = evidence.action_id;
+    if (event.kind === "action_blocked") workflows.set(id, {
+      id: `action:${id}`, module: evidence.module, requires: evidence.requires ?? [], dependencies: evidence.dependencies ?? [],
+    });
+    const workflow = workflows.get(id);
+    if (!workflow) return frame;
+    const phase = event.kind === "action_blocked" ? "blocked" : event.kind === "action_ready" ? "ready" : actionState(frame);
+    return { ...frame, workflow: { ...workflow, phase } };
   });
+}
+
+export function actionState(frame) {
+  const { kind, evidence = {} } = frame?.event ?? {};
+  if (kind === "action_blocked" || frame?.workflow?.phase === "blocked") return "blocked";
+  if (kind === "action_ready") return "ready";
+  const result = evidence.result, body = parse(result?.body);
+  if (["denied", "error"].includes(kind) || result?.error != null || body?.error != null
+    || [result, body, body?.result].some((value) => value?.committed === false)
+    || result?.status >= 400 || (typeof result?.exit_status === "number" && result.exit_status !== 0)) return "failed";
+  return result !== undefined ? "succeeded" : "pending";
 }
 
 function ontologyFacts(state) {
@@ -69,6 +90,8 @@ function actionTitle(action) {
   if (action.kind === "onto.expand") return `Request capability · ${input.module || action.target || "module"}`;
   if (action.kind === "http.request") {
     const body = parse(input.body);
+    const module = /^https:\/\/institutions\.local\/modules\/([a-z0-9-]+)\/?$/.exec(input.url ?? "");
+    if (input.method === "GET" && module) return `Discover ${module[1].replace(/-/g, " ")}`;
     return typeof body?.story === "string" ? body.story : `${input.method ?? "HTTP"} ${input.url ?? action.target ?? "request"}`;
   }
   const subjects = {
@@ -99,7 +122,7 @@ export function agentPreview(frame, index) {
   const event = frame.event ?? {};
   const action = event.evidence?.action;
   return {
-    key: String(event.seq ?? index), index,
+    key: frame.workflow?.id ?? String(event.seq ?? index), index,
     title: compact(action ? actionTitle(action) : ["seed", "fork"].includes(event.kind)
       ? "The starting world" : event.summary || label(event.kind || "Checkpoint"), 160),
   };
@@ -112,11 +135,17 @@ export function renderAgent(frame, index = 0, data = {}) {
   const action = evidence.action;
   const isSeed = ["seed", "fork"].includes(event.kind);
   const title = action ? actionTitle(action) : isSeed ? (event.kind === "fork" ? "Continue from a saved world" : "An experiment, ready to begin") : event.summary ?? label(event.kind ?? "Checkpoint");
-  const outcome = action ? resultSummary(evidence.result, action, event.kind) : { title: isSeed ? "Objective" : label(event.kind ?? "Recorded"), detail: isSeed ? frame.world?.goal ?? "No objective recorded." : evidence.error ?? evidence.note ?? event.summary ?? "" };
+  let outcome = action ? resultSummary(evidence.result, action, event.kind) : { title: isSeed ? "Objective" : label(event.kind ?? "Recorded"), detail: isSeed ? frame.world?.goal ?? "No objective recorded." : evidence.error ?? evidence.note ?? event.summary ?? "" };
+  const workflow = frame.workflow, phase = workflow?.phase;
+  if (phase === "blocked") outcome = { title: "Blocked · missing capability", detail: "Waiting for the world generator to compile the missing Ontolang." };
+  if (phase === "ready") outcome = { title: "Capability ready · retrying", detail: "Ontolang compiled and published. Resuming the original action." };
+  if (phase === "succeeded") outcome = { ...outcome, title: "Action completed", detail: "The original action succeeded with the new capability available." };
+  const resourceState = workflow && frame.world?.ontology?.modules?.[workflow.module];
+  const requirements = workflow ? `<section class="action-resources"><h3>${phase === "succeeded" ? "Resources available" : "Required resources"}</h3><ul>${workflow.requires.map((resource) => `<li><span class="resource-status">${resourceState ? "Available" : "Missing"}</span> <span title="${esc(resource)}">${esc(workflow.module)}</span></li>`).join("")}${workflow.dependencies.map((resource) => `<li><span class="resource-status">Dependency</span> <span title="${esc(resource)}">Shared foundation</span></li>`).join("")}</ul>${resourceState ? `<p>${list(resourceState.snapshot?.instances).length} recorded objects · ${list(resourceState.stories).length} executable Stories</p>` : ""}</section>` : "";
   const report = action?.kind === "finish" ? action.inputs?.message ?? action.text : null;
   const input = action?.inputs;
   const domain = input?.url || (action?.kind?.startsWith("onto.") ? input?.module || "Company foundation" : null) || action?.target || experimentName(data?.run);
-  return `<article class="stage-card story-card"><div class="card-meta"><span>Checkpoint ${esc(index + 1)}</span><span>${esc(event.kind ?? "seed")}${event.seq != null ? ` · event ${esc(event.seq)}` : ""}</span></div><h2 class="story-title serif">${esc(compact(title, 220))}</h2><div class="story-domain">${esc(domain)}</div><div class="story-outcome"><strong>${esc(outcome.title)}</strong><p>${esc(outcome.detail)}</p></div>${report ? `<p class="story-report">${esc(report)}</p>` : ""}${action ? raw("Action inputs", action) : ""}${evidence.result !== undefined ? raw("Recorded result", evidence.result) : !isSeed && entries(evidence).length ? raw("Recorded evidence", evidence) : ""}${isSeed && data?.initial?.actor_instructions ? raw("Actor instructions", data.initial.actor_instructions) : ""}</article>`;
+  return `<article class="stage-card story-card${workflow ? " workflow-card" : ""}"><div class="card-meta"><span>Checkpoint ${esc(index + 1)}</span><span>${esc(event.kind ?? "seed")}${event.seq != null ? ` · event ${esc(event.seq)}` : ""}</span></div><h2 class="story-title serif">${esc(compact(title, 220))}</h2>${workflow ? "" : `<div class="story-domain">${esc(domain)}</div>`}<div class="story-outcome"><strong>${esc(outcome.title)}</strong><p>${esc(outcome.detail)}</p></div>${requirements}${report ? `<p class="story-report">${esc(report)}</p>` : ""}${action ? raw("Action inputs", action) : ""}${evidence.result !== undefined ? raw("Recorded result", evidence.result) : !isSeed && entries(evidence).length ? raw("Recorded evidence", evidence) : ""}${isSeed && data?.initial?.actor_instructions ? raw("Actor instructions", data.initial.actor_instructions) : ""}</article>`;
 }
 
 // Financial resources come from the selected snapshot and its modeled owner.
@@ -136,12 +165,45 @@ export function agentFunds(world = {}) {
   return null;
 }
 
+// Only fields recorded on the configured actor belong in the generic panel.
+// Owned institutional accounts are not automatically a personal spending budget.
+function agentAttributes(world) {
+  const actor = world.ontology?.definition?.actor;
+  if (!actor) return "";
+  const seen = new Set();
+  return [["", world.ontology], ...entries(world.ontology.modules)].map(([scope, state]) => {
+    if (state?.definition?.agent_state) return "";
+    const instance = list(state?.snapshot?.instances).find((item) => item.id === actor);
+    const fields = entries(instance?.fields).filter(([key, value]) => key !== "name" || value !== actor.split(":").slice(1).join(":"));
+    const signature = JSON.stringify(stable(fields));
+    if (!fields.length || seen.has(signature)) return "";
+    seen.add(signature);
+    return `<div class="agent-state-attributes" data-world-key="agent-fields:${esc(scope)}">${scope ? `<span class="agent-state-scope">${esc(scope)}</span>` : ""}<dl>${fields.map(([key, value]) => `<div data-world-key="${esc(key)}"><dt>${esc(label(key.replace(/([a-z])([A-Z])/g, "$1 $2")))}</dt><dd title="${esc(text(value))}">${esc(compact(value))}</dd></div>`).join("")}</dl></div>`;
+  }).join("");
+}
+
+function declaredAgentState(world) {
+  return [["", world.ontology], ...entries(world.ontology?.modules)].map(([scope, state]) => {
+    const declared = state?.agent_state;
+    if (!declared) return "";
+    const fields = list(declared.shape?.fields).filter((field) => !(field.source?.instance === world.ontology?.definition?.actor && field.source?.field === "name" && declared.values?.[field.key] === world.ontology?.definition?.actor?.split(":").slice(1).join(":")));
+    if (!fields.length) return "";
+    return `<div class="agent-state-attributes" data-world-key="declared-agent:${esc(scope)}">${scope ? `<span class="agent-state-scope">${esc(scope)}</span>` : ""}<dl>${fields.map((field) => {
+      const value = declared.values?.[field.key];
+      const display = value === undefined ? "Unavailable" : field.format === "usd_cents" && Number.isFinite(value) ? dollars(value) : text(value);
+      return `<div data-world-key="${esc(field.key)}"><dt>${esc(field.label)}</dt><dd title="${esc(display)}">${esc(compact(display))}</dd></div>`;
+    }).join("")}</dl></div>`;
+  }).join("");
+}
+
 export function renderAgentState(frame) {
-  const world = frame?.world ?? {}, funds = agentFunds(world);
+  const world = frame?.world ?? {}, funds = world.ontology?.definition?.agent_state ? null : agentFunds(world);
   const identity = world.ontology?.definition?.actor || (world.flowers ? "Purchasing agent" : "Experiment agent");
   const metrics = funds?.balance !== undefined ? [["Cash", funds.balance], ["Obligations", funds.obligations], ["Reserved", funds.reserved]] : [];
   const proportion = funds?.balance > 0 ? Math.min(1, Math.max(0, funds.available / funds.balance)) : 0;
-  return `<section class="agent-state-card" data-world-key="agent-state"><div class="agent-state-heading"><div class="agent-avatar" aria-hidden="true">${esc(identity.split(":").at(-1).slice(0, 1))}</div><div><h3 class="serif">${esc(identity)}</h3><p>${world.flowers ? "Customer funds" : "Acting organization"}</p></div></div><div class="agent-budget"><span>Available to spend</span><strong class="serif">${funds ? dollars(funds.available) : "Not modeled"}</strong></div>${metrics.length ? `<meter class="agent-budget-meter" min="0" max="1" value="${proportion}" aria-label="Share of cash available to spend">${Math.round(proportion * 100)}%</meter><dl class="agent-state-metrics">${metrics.map(([name, value]) => `<div data-world-key="${name}"><dt>${name}</dt><dd>${dollars(value)}</dd></div>`).join("")}</dl>` : ""}<p class="agent-budget-source">${funds ? esc(funds.source) : "This example does not define a separate spending budget for the agent."}</p></section>`;
+  const attributes = declaredAgentState(world) + (world.ontology?.definition?.agent_state ? "" : agentAttributes(world));
+  const budget = funds ? `<div class="agent-budget" title="${esc(funds.source)}"><span>Available to spend</span><strong class="serif">${dollars(funds.available)}</strong></div>` : "";
+  return `<section class="agent-state-card" data-world-key="agent-state"><div class="agent-state-heading"><div class="agent-avatar" aria-hidden="true">${esc(identity.split(":").at(-1).slice(0, 1))}</div><div><h3 class="serif">${esc(identity)}</h3></div></div>${budget}${metrics.length ? `<meter class="agent-budget-meter" min="0" max="1" value="${proportion}" aria-label="Share of cash available to spend">${Math.round(proportion * 100)}%</meter><dl class="agent-state-metrics">${metrics.map(([name, value]) => `<div data-world-key="${name}"><dt>${name}</dt><dd>${dollars(value)}</dd></div>`).join("")}</dl>` : ""}${attributes}${funds ? `<p class="agent-budget-source sr-text">${esc(funds.source)}</p>` : ""}</section>`;
 }
 
 function valueHtml(value, old, compare) {
@@ -170,7 +232,7 @@ function ontologySection(name, state, before, compare) {
   }
   const records = [...groups].map(([type, values]) => `<details data-world-key="${esc(type)}" class="fact-group"${values.length <= 3 && groups.size <= 3 ? " open" : ""}><summary>${esc(type)} · ${values.length} records</summary>${values.map((instance) => record(instance.fields?.name ?? instance.id ?? type, instance.fields ?? omit(instance, ["id", "type"]), old.get(instance.id)?.fields, compare, instance.id)).join("")}</details>`).join("");
   const deleted = compare ? [...old].filter(([id]) => !instances.some((instance) => instance.id === id)).map(([, instance]) => record(instance.id, {}, instance.fields, true)).join("") : "";
-  return `<section data-world-key="${esc(name)}" class="snapshot institution-snapshot"><h3 class="fact-title serif">${esc(name)}</h3><p class="fact-note">${instances.length} records · ${list(state?.stories).length} executable Stories</p>${records || '<p class="fact-note">No records in this snapshot.</p>'}${deleted}${raw("Executable Stories", state?.stories ?? [])}${raw("Complete snapshot", state?.snapshot ?? {})}</section>`;
+  return `<section data-world-key="${esc(name || "institution-facts")}" class="snapshot institution-snapshot">${name ? `<h3 class="fact-title serif">${esc(name)}</h3>` : ""}<p class="fact-note">${instances.length} records · ${list(state?.stories).length} executable Stories</p>${records || '<p class="fact-note">No records in this snapshot.</p>'}${deleted}${raw("Executable Stories", state?.stories ?? [])}${raw("Complete snapshot", state?.snapshot ?? {})}</section>`;
 }
 
 function businessSection(business, previous, compare) {
@@ -234,8 +296,37 @@ function resourcesSection(world, previous, compare) {
   return `${resources ? `<details class="snapshot"${world.ontology || world.business || world.flowers ? "" : " open"}><summary>Public resources · ${entries(current).length}</summary>${resources}</details>` : ""}${filesHtml ? `<section class="snapshot"><h3 class="fact-title serif">Workspace</h3>${filesHtml}</section>` : ""}${messages ? `<section class="snapshot"><h3 class="fact-title serif">Messages</h3>${messages}</section>` : ""}${documents ? `<section class="snapshot"><h3 class="fact-title serif">Documents</h3>${documents}</section>` : ""}${world.hosting ? raw("Hosted services", world.hosting) : ""}`;
 }
 
+// Source is immutable within a published module, but historical checkpoints may
+// precede its publication. Read only the selected world's definitions.
+export function sourceSignature(world = {}) {
+  const ontology = world.ontology;
+  return JSON.stringify(stable(ontology ? {
+    foundation: { source: ontology.definition?.source ?? {}, agent_state: ontology.definition?.agent_state },
+    modules: Object.fromEntries(entries(ontology.modules).map(([name, state]) => [name, { source: state.definition?.source ?? {}, agent_state: state.definition?.agent_state }])),
+  } : null));
+}
+
+function renderOntolang(world) {
+  const ontology = world.ontology;
+  const modules = entries(ontology?.modules);
+  const section = (key, name, state, module = false) => {
+    const files = entries(state?.definition?.source).sort(([a], [b]) => {
+      // Show a module's own source before its bundled foundation files.
+      const shared = (file) => module && state.definition.source[file] === ontology.definition?.source?.[file];
+      return Number(shared(a)) - Number(shared(b)) || a.localeCompare(b);
+    });
+    return `<section class="source-section" data-world-key="${esc(key)}"><h3>${esc(name)}</h3>${files.length ? files.map(([path, source], index) => `<details class="source-file" data-world-key="${esc(path)}"${index === 0 ? " open" : ""}><summary>${esc(path)}</summary><pre tabindex="0" aria-label="${esc(name)} · ${esc(path)}"><code>${esc(source)}</code></pre></details>`).join("") : '<p class="fact-note">No Ontolang source was recorded for this module.</p>'}${state?.definition?.agent_state ? raw("Agent state declaration", state.definition.agent_state) : ""}</section>`;
+  };
+  const body = ontology
+    ? section("foundation", ontology.generation || modules.length ? "Foundation" : "Institution", ontology)
+      + modules.map(([name, state]) => section(`module:${name}`, name, state, true)).join("")
+    : '<p class="fact-note">This experiment does not use Ontolang. Select an Onto experiment to inspect its implementation.</p>';
+  return `<article class="stage-card fact-card source-card" data-world-key="ontolang-source"><div class="card-meta"><span>World implementation</span><span>Read only</span></div><h2 class="fact-title serif">Ontolang</h2><p class="fact-note">${ontology ? "Source recorded at this checkpoint: the objects, rules, formulas and Stories that define the institution." : "No Ontolang implementation"}</p>${body}</article>`;
+}
+
 export function renderWorld(frame, previous, view = "facts", focus = "world") {
   const world = frame?.world ?? {};
+  if (view === "ontolang") return renderOntolang(world);
   const before = previous?.world ?? previous;
   const compare = !!before;
   const unchanged = compare && worldSignature(world) === worldSignature(before);
@@ -245,7 +336,7 @@ export function renderWorld(frame, previous, view = "facts", focus = "world") {
   else {
     if (world.ontology) {
       const modules = entries(world.ontology.modules);
-      body += ontologySection(world.ontology.generation || modules.length ? "Company foundation" : "Institution facts", world.ontology, before?.ontology, compare);
+      body += ontologySection(world.ontology.generation || modules.length ? "Company foundation" : "", world.ontology, before?.ontology, compare);
       body += modules.map(([name, state]) => ontologySection(name, state, before?.ontology?.modules?.[name], compare)).join("");
     }
     if (world.business) body += businessSection(world.business, before?.business, compare);
@@ -253,5 +344,5 @@ export function renderWorld(frame, previous, view = "facts", focus = "world") {
     body += resourcesSection(world, before, compare);
     if (!body) body = '<p class="fact-note">World facts will appear here once the experiment loads.</p>';
   }
-  return `<article class="stage-card fact-card"><div class="card-meta"><span>${domainView ? "Domains" : "World facts"}</span><span>${esc(unchanged ? "Facts unchanged" : compare ? `Last change${frame.world_checkpoint ? ` · checkpoint ${frame.world_checkpoint}` : ""}` : "Initial snapshot")}</span></div><h2 class="fact-title serif">${domainView ? "The world’s structure" : world.ontology ? "An executable institution" : world.business ? "Harbor Works" : world.flowers?.florist ? esc(world.flowers.florist) : "The world so far"}</h2><p class="fact-note">${domainView ? "Domains and operations recorded in this world." : unchanged ? "The recorded facts are unchanged at this checkpoint." : compare ? "Saved facts at this checkpoint. Values show the last recorded world change." : "The experiment’s recorded starting state."}</p>${body}</article>`;
+  return `<article class="stage-card fact-card"><div class="card-meta"><h2>${domainView ? view === "tree" ? "Tree" : "Circle pack" : "Facts"}</h2><span>${esc(unchanged ? "Facts unchanged" : compare ? `Last change${frame.world_checkpoint ? ` · checkpoint ${frame.world_checkpoint}` : ""}` : "Initial snapshot")}</span></div>${body}</article>`;
 }

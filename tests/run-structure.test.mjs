@@ -62,3 +62,14 @@ test("carousel uses adjacent recorded events with stable identities and no ficti
   assert.deepEqual(carouselWindow(frames, 0).map((slide) => slide.offset), [0, 1]);
   assert.match(previewMarkup({ offset: -1, index: 1, title: '<script>bad()</script>' }), /&lt;script&gt;/);
 });
+
+test("one stalled action occupies one carousel card throughout construction and retry", () => {
+  const frames = [
+    { event: { seq: 1, kind: "seed" } },
+    ...[2, 4, 5].map((seq) => ({ event: { seq, kind: "outcome" }, workflow: { id: "action:1" } })),
+    { event: { seq: 6, kind: "outcome" } },
+  ];
+  for (const selected of [1, 2, 3]) {
+    assert.deepEqual(carouselWindow(frames, selected).map((f) => [f.key, f.offset]), [["1", -1], ["action:1", 0], ["6", 1]]);
+  }
+});

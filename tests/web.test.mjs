@@ -530,3 +530,33 @@ test("late saved polling cannot restore a run after New run is chosen", async ()
   assert.equal(b.element("#run-name").value, "");
   assert.equal(b.element("#new").disabled, false);
 });
+
+
+test("agent state declaration edits survive polling and invalid JSON prevents saving", async () => {
+  const b = await browser();
+  const shape = { fields: [{ key: "name", label: "Name", kind: "string", format: "plain", source: { instance: "Clerk:Ada", field: "name" } }] };
+  const custom = structuredClone(institutionSeed);
+  custom.institution.agent_state = shape;
+  let saved = false;
+  const next = detail("declared-agent");
+  next.run.experiment = "institutions";
+  next.run.world = next.frames[0].world = custom.world;
+  b.respond((path) => path === "runs" ? saved ? [{ id: next.run.id, experiment: "institutions" }] : []
+    : path === "institutions" ? (saved = true, { id: next.run.id })
+    : path.startsWith("runs/") ? next : custom);
+  await b.experiment("institutions");
+  assert.deepEqual(JSON.parse(b.element("#institution-agent-state").value), shape);
+  b.element("#institution-agent-state").value = "{invalid";
+  b.element("#institution-agent-state").oninput();
+  await b.refresh();
+  assert.equal(b.element("#institution-agent-state").value, "{invalid");
+  await b.element("#new").onclick();
+  assert.equal(b.requests.filter((r) => r.path === "institutions").length, 0);
+  shape.fields[0].label = "Agent name";
+  b.element("#institution-agent-state").value = JSON.stringify(shape);
+  b.element("#institution-agent-state").oninput();
+  await b.element("#new").onclick();
+  const submitted = JSON.parse(b.requests.find((r) => r.path === "institutions").options.body);
+  assert.deepEqual(submitted.institution.agent_state, shape);
+  assert.equal(b.element("#institution-agent-state").readOnly, true);
+});

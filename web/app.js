@@ -71,6 +71,7 @@ let models = [];
 let prompts;
 let editingPrompt = null;
 let institutionDefinition = null;
+let agentStateDraft = "";
 let generationPolicy = null;
 let seedExperiment = null;
 const institutionTemplate = (experiment = $("#experiment").value) =>
@@ -151,6 +152,7 @@ function settingsState() {
   const runtimeUnavailable = !id && onto && seed?.runtime_available === false;
   $("#new").disabled = !!id || pending || !!editingPrompt || !!runtimeUnavailable;
   $("#institution-source").readOnly = !!id || pending || onto === "harbor";
+  $("#institution-agent-state").readOnly = !!id || pending || onto === "harbor";
   $("#institution-file").disabled = pending;
   for (const field of ["institution-actor", "institution-epoch"])
     $("#" + field).disabled = !!id || pending || onto === "harbor";
@@ -224,6 +226,8 @@ function modelEditor(definition) {
   const source = definition.source[selectedFile] ?? "";
   if ($("#institution-source").value !== source)
     $("#institution-source").value = source;
+  const shapeSource = id ? (definition.agent_state ? pretty(definition.agent_state) : "") : agentStateDraft;
+  if ($("#institution-agent-state").value !== shapeSource) $("#institution-agent-state").value = shapeSource;
   $("#institution-actor").value = definition.actor;
   $("#institution-epoch").value = definition.epoch;
   $("#institution-status").textContent = id
@@ -575,6 +579,16 @@ async function create() {
   if (experiment !== seedExperiment)
     throw Error("Load this experiment's seed before saving.");
   const template = institutionTemplate(experiment);
+  if (template) {
+    if (agentStateDraft.trim()) {
+      try { institutionDefinition.agent_state = JSON.parse(agentStateDraft); }
+      catch { throw Error("Agent state declaration must be valid JSON."); }
+      if (!institutionDefinition.agent_state || !Array.isArray(institutionDefinition.agent_state.fields))
+        throw Error("Agent state declaration must contain a fields array.");
+    } else if (institutionDefinition.agent_state) {
+      throw Error('Declare agent state fields, or use {"fields":[]} for no fields.');
+    }
+  }
   const business = experiment === "bellwether" || template === "harbor";
   const generative = ["generative", "story-review"].includes(template);
   if (template && seed.runtime_available === false)
@@ -717,11 +731,16 @@ async function loadSeed(experiment) {
   seedExperiment = experiment;
   seed = next;
   institutionDefinition = seed.institution ? structuredClone(seed.institution) : null;
+  agentStateDraft = institutionDefinition?.agent_state ? pretty(institutionDefinition.agent_state) : "";
   generationPolicy = seed.generation ? structuredClone(seed.generation) : null;
   prompts = { system: seed.system, task: seed.world.goal };
   if (seed.config) showSettings(seed.config);
   if (experiment !== "flowers") $("#mode").value = "false";
 }
+$("#institution-agent-state").oninput = () => {
+  if (!id && ["accounts", "generative", "story-review"].includes(institutionTemplate()))
+    agentStateDraft = $("#institution-agent-state").value;
+};
 $("#institution-source").oninput = () => {
   if (!id && ["accounts", "generative", "story-review"].includes(institutionTemplate()) && institutionDefinition)
     institutionDefinition.source[$("#institution-file").value] = $("#institution-source").value;

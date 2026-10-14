@@ -1,8 +1,15 @@
-import { agentPreview, esc, renderAgent } from "./run-view.js";
+import { reconcileWorld } from "./run-world.js";
+import { agentPreview, actionState, esc, renderAgent } from "./run-view.js";
 
 export function carouselWindow(frames, selected) {
-  return [selected - 1, selected, selected + 1].filter((index) => frames[index]).map((index) => ({
-    ...agentPreview(frames[index], index), offset: index - selected, frame: frames[index],
+  if (!frames[selected]) return [];
+  const key = (index) => agentPreview(frames[index], index).key;
+  const current = key(selected);
+  let previous = selected - 1, next = selected + 1;
+  while (previous >= 0 && key(previous) === current) --previous;
+  while (next < frames.length && key(next) === current) ++next;
+  return [[previous, -1], [selected, 0], [next, 1]].filter(([index]) => frames[index]).map(([index, offset]) => ({
+    ...agentPreview(frames[index], index), offset, frame: frames[index],
   }));
 }
 
@@ -19,9 +26,10 @@ export function createAgentCarousel(root, env = globalThis) {
   const reduced = () => !!env.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
   function geometry(offset) {
     const height = root.clientHeight;
-    const preview = height < 320 ? 40 : height < 440 ? 62 : 76;
-    const gap = height < 440 ? 10 : 14;
-    const main = Math.max(80, height - 2 * (preview + gap));
+    const density = (parseFloat(env.getComputedStyle(root).fontSize) || 16) / 16;
+    const preview = (height < 320 * density ? 40 : height < 440 * density ? 62 : 76) * density;
+    const gap = (height < 440 * density ? 10 : 14) * density;
+    const main = Math.max(80 * density, height - 2 * (preview + gap));
     const scale = offset === 0 ? 1 : 0.9;
     const y = offset < 0 ? (offset + 1) * (preview + gap)
       : offset === 0 ? preview + gap : preview + gap + main + gap + (offset - 1) * (preview + gap);
@@ -44,11 +52,12 @@ export function createAgentCarousel(root, env = globalThis) {
     lastUpdate = [frames, index, data, nextSelection];
     const slides = carouselWindow(frames, index);
     const keys = new Set(slides.map((slide) => slide.key));
-    const nextSignature = JSON.stringify([nextSelection, index, frames.length, slides.map((slide) => slide.key)]);
+    const nextSignature = JSON.stringify([nextSelection, index, frames.length, slides.map((slide) => [slide.key, slide.frame.event.seq])]);
     if (!changedSelection && signature === nextSignature) return;
     signature = nextSignature;
     const token = ++revision;
-    const moving = animate && !changedSelection && priorIndex !== index && !reduced();
+    const sameAction = frames[priorIndex] && frames[index] && agentPreview(frames[priorIndex], priorIndex).key === agentPreview(frames[index], index).key;
+    const moving = animate && !changedSelection && priorIndex !== index && !sameAction && !reduced();
     const direction = index >= priorIndex ? 1 : -1;
     const rootBox = root.getBoundingClientRect();
     const before = new Map();
@@ -74,6 +83,17 @@ export function createAgentCarousel(root, env = globalThis) {
         card = { key: slide.key, element, body: element.querySelector(".agent-full"), preview: element.querySelector(".agent-preview") };
         cards.set(slide.key, card);
         root.append(element);
+      }
+      if (card.eventSeq !== slide.frame.event.seq) {
+        if (card.eventSeq !== undefined) reconcileWorld(card.body, renderAgent(slide.frame, slide.index, data));
+        card.eventSeq = slide.frame.event.seq;
+      }
+      const status = slide.frame.workflow?.phase ?? actionState(slide.frame);
+      const buzz = slide.offset === 0 && ["blocked", "failed"].includes(status) && card.status !== status;
+      card.status = status;
+      card.element.dataset.state = status;
+      if (buzz && animate && !reduced()) {
+        card.body.animate?.([{ transform: "translateX(0)" }, { transform: "translateX(-4px)" }, { transform: "translateX(4px)" }, { transform: "translateX(-3px)" }, { transform: "translateX(2px)" }, { transform: "translateX(0)" }], { duration: 320, easing: "ease-out" });
       }
       card.index = slide.index;
       card.leaving = false;
@@ -110,8 +130,6 @@ export function createAgentCarousel(root, env = globalThis) {
         card.motion.finished.then(() => { if (revision === token && card.leaving) remove(card); }).catch(() => {});
       } else remove(card);
     }
-    root.dataset.atStart = String(index === 0);
-    root.dataset.atEnd = String(index === frames.length - 1);
   }
   // Resizing is layout, not a new checkpoint. Do not replay the animation.
   const observer = env.ResizeObserver ? new env.ResizeObserver(() => {

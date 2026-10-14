@@ -7,6 +7,7 @@ use std::{
     collections::BTreeMap,
     time::{SystemTime, UNIX_EPOCH},
 };
+pub mod agent_state;
 pub mod audit;
 pub mod business;
 pub mod construction;
@@ -89,7 +90,22 @@ impl Default for World {
 impl World {
     pub fn observation(&self) -> Value {
         if let Some(state) = &self.tools {
-            return json!({"task":self.goal,"tools":state.definitions,"tool_policy":state.policy,"elapsed_seconds":state.elapsed_seconds,"history":self.transcript});
+            let mut observation = json!({"task":self.goal,"tools":state.definitions,"tool_policy":state.policy,"elapsed_seconds":state.elapsed_seconds,"history":self.transcript});
+            if let Some(ontology) = &self.ontology {
+                let mut scopes = serde_json::Map::new();
+                if let Some(state) = &ontology.agent_state {
+                    scopes.insert("foundation".into(), state.clone());
+                }
+                for (name, module) in &ontology.modules {
+                    if let Some(state) = &module.agent_state {
+                        scopes.insert(format!("module:{name}"), state.clone());
+                    }
+                }
+                if !scopes.is_empty() {
+                    observation["agent_state"] = json!(scopes);
+                }
+            }
+            return observation;
         }
         if self.flowers.is_some() {
             return json!({"task":self.goal,"tools":flowers::TOOLS,"history":self.transcript});
@@ -611,7 +627,7 @@ impl Store {
     pub fn frames_after(&self, id: &str, seq: u64) -> Result<Vec<Value>> {
         let mut stmt = self
             .conn
-            .prepare("SELECT event,state FROM events WHERE run=? AND seq>? AND json_extract(event,'$.kind') IN ('seed','fork','outcome','expansion','denied','error','intervention','recovery') ORDER BY seq")?;
+            .prepare("SELECT event,state FROM events WHERE run=? AND seq>? AND json_extract(event,'$.kind') IN ('seed','fork','outcome','expansion','denied','error','intervention','recovery','action_blocked','action_ready') ORDER BY seq")?;
         let rows = stmt.query_map(params![id, i64::try_from(seq)?], |r| {
             Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
         })?;
@@ -628,6 +644,8 @@ impl Store {
                 "error",
                 "intervention",
                 "recovery",
+                "action_blocked",
+                "action_ready",
             ]
             .contains(&event.kind.as_str())
             {

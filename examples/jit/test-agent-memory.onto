@@ -1,0 +1,14 @@
+# Projection validation fixture only; not supplied to live generation.
+# Memory starts unobserved. Publication does not invent an observation.
+object AgentMemory
+  name: string @required
+  owner: Operator @required
+  lastObservation: string @required
+
+story Forget
+  Operator clears AgentMemory
+    requires AgentMemory.owner.name is Operator.name
+    sets AgentMemory.lastObservation to "unobserved"
+
+seed AgentMemory
+  name: "main", owner: "Ada", lastObservation: "unobserved"

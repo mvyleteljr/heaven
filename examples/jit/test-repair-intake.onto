@@ -1,0 +1,19 @@
+# Deterministic test fixture only. Live generation does not receive this file.
+object IntakeDesk
+  name: string @required
+  owner: Operator @required
+  status: string @required
+
+object RepairRequest
+  description: string @required
+  status: string @required
+  desk: IntakeDesk @required
+
+story Intake
+  Operator creates RepairRequest for IntakeDesk
+    sets RepairRequest.desk to IntakeDesk
+    sets RepairRequest.status to "pending"
+    sets IntakeDesk.status to "registered"
+
+seed IntakeDesk
+  name: "main", owner: "Ada", status: "ready"

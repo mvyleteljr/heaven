@@ -2,7 +2,7 @@ const transitions = new WeakMap();
 const layoutSelector = [
   ".stage-card", ".agent-state-card", ".agent-budget", ".agent-state-metrics", ".agent-state-metrics > div",
   ".snapshot", ".fact-record", ".fact-row", ".fact-value", "details", "pre",
-  ".domain-list", ".domain-fields", ".domain-fields > div", ".domain-map", ".pack-children", ".domain-inspector",
+  "svg circle", ".domain-list", ".domain-fields", ".domain-fields > div", ".domain-map", ".pack-children", ".domain-inspector",
 ].join(",");
 const duration = 360;
 const easing = "cubic-bezier(.22,1,.36,1)";
@@ -14,7 +14,14 @@ export function transitionState(root, mutate, env = root.ownerDocument.defaultVi
   let state = transitions.get(root);
   if (!state) { state = { motions: new Map() }; transitions.set(root, state); }
   const reduced = env.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-  const measure = (element) => ({ height: element.getBoundingClientRect().height, opacity: env.getComputedStyle(element).opacity });
+  const measure = (element) => {
+    const style = env.getComputedStyle(element);
+    return { height: element.getBoundingClientRect().height, opacity: style.opacity,
+      circle: element.tagName?.toLowerCase() === "circle" ? Object.fromEntries(["cx", "cy", "r"].map((key) => {
+        const rendered = Number.parseFloat(style[key]);
+        return [key, Number.isFinite(rendered) ? rendered : Number(element.getAttribute(key))];
+      })) : null };
+  };
   const prior = new Map();
   if (!reduced) {
     for (const element of new Set([root, ...root.querySelectorAll(layoutSelector), ...state.motions.keys()]))
@@ -43,6 +50,16 @@ export function transitionState(root, mutate, env = root.ownerDocument.defaultVi
     const after = measure(node), before = prior.get(node);
     if (after.height === 0 && !before?.height) continue;
     const start = {}, end = {};
+    if (after.circle) {
+      for (const property of ["cx", "cy", "r"]) {
+        if (before?.circle && before.circle[property] !== after.circle[property]) {
+          start[property] = `${before.circle[property]}px`; end[property] = `${after.circle[property]}px`;
+        } else if (!before && property === "r") {
+          start.r = "0px"; end.r = `${after.circle.r}px`;
+          start.opacity = 0; end.opacity = 1;
+        }
+      }
+    }
     const html = node.namespaceURI === "http://www.w3.org/1999/xhtml";
     const style = env.getComputedStyle(node);
     const newBlock = changes.added?.has(node) && html && ["block", "flex", "grid", "list-item", "flow-root"].includes(style.display);

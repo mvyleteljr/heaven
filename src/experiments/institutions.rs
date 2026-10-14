@@ -19,18 +19,45 @@ pub fn definition(template: &str) -> Result<ontology::Definition> {
             include_str!("../../examples/onto/harbor-works.onto"),
             super::harbor_onto::ACTOR,
         ),
-        "generative" | "story-review" => (
+        "generative" | "story-review" | "expansion-demo" => (
             "foundation.onto",
             include_str!("../../examples/jit/foundation.onto"),
             "Operator:Ada",
         ),
         _ => bail!("Unknown institution template"),
     };
+    let agent_state = if template == "harbor" {
+        use crate::agent_state::{Declaration, Field, Format, Kind, Source};
+        Declaration {
+            fields: [
+                ("available", "Available to spend", "freeCash"),
+                ("balance", "Cash", "balance"),
+                ("obligations", "Obligations", "obligations"),
+                ("reserved", "Reserved", "reserved"),
+                ("contingency", "Contingency", "contingency"),
+            ]
+            .into_iter()
+            .map(|(key, label, field)| Field {
+                key: key.into(),
+                label: label.into(),
+                kind: Kind::Integer,
+                format: Format::UsdCents,
+                source: Source {
+                    instance: "Firm:harbor".into(),
+                    field: field.into(),
+                },
+            })
+            .collect(),
+        }
+    } else {
+        crate::agent_state::Declaration::identity(actor)
+    };
     Ok(ontology::Definition {
         source: BTreeMap::from([(file.into(), source.into())]),
         actor: actor.into(),
         epoch: EPOCH.into(),
         public_facts: true,
+        agent_state: Some(agent_state),
     })
 }
 
@@ -59,9 +86,13 @@ pub fn preview(template: &str) -> Result<Value> {
     let definition = definition(template)?;
     let harbor = template == "harbor";
     let review = template == "story-review";
-    let generative = template == "generative" || review;
-    let example: Value =
-        serde_json::from_str(include_str!("../../examples/jit/institution-run.json"))?;
+    let expansion_demo = template == "expansion-demo";
+    let generative = template == "generative" || review || expansion_demo;
+    let example: Value = serde_json::from_str(if expansion_demo {
+        include_str!("../../examples/jit/repair-intake-run.json")
+    } else {
+        include_str!("../../examples/jit/institution-run.json")
+    })?;
     let task = if review {
         crate::story_executor::TASK
     } else if harbor {
@@ -80,7 +111,9 @@ pub fn preview(template: &str) -> Result<Value> {
     } else {
         tools::SYSTEM
     };
-    let name = if review {
+    let name = if expansion_demo {
+        "Onto · Missing domain demo"
+    } else if review {
         "Onto · Story review"
     } else if harbor {
         "Onto · Harbor Works"
@@ -89,7 +122,9 @@ pub fn preview(template: &str) -> Result<Value> {
     } else {
         "Onto · Accounts"
     };
-    let description = if review {
+    let description = if expansion_demo {
+        "Discover the missing repair-intake capability, generate and compile its Ontolang model, retry the waiting action, then register and verify one repair request. Starts with only the company foundation. Live generation is bounded to one module and a $0.50 run limit."
+    } else if review {
         "Review institutional rules through direct Ontolang Story execution. Inspect models and facts, request compiled model additions, and examine committed or refused transitions. Modules share an immutable foundation and have separate mutable state."
     } else if harbor {
         "A separate public-facts Harbor Works experiment. Ontolang governs organizations, agreements, balances and service evidence; Frontier runs the clock, counterparties and isolated handlers."

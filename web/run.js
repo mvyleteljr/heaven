@@ -1,6 +1,8 @@
 import { createAgentCarousel } from "./run-carousel.js";
 import { reconcileWorld } from "./run-world.js";
-import { esc, experimentName, traceFrames, renderWorld, renderAgentState, worldSignature } from "./run-view.js";
+import { esc, experimentName, traceFrames, renderWorld, renderAgentState, worldSignature, sourceSignature } from "./run-view.js";
+
+const worldViews = ["facts", "tree", "domains", "ontolang"];
 
 const runLabel = (run) => ["institutions", "harbor_onto", "institutions_generated", "onto_review"].includes(run.experiment) && !run.name?.startsWith("Onto")
   ? `${experimentName(run)}${run.name ? ` · ${run.name}` : ""}` : run.name || experimentName(run);
@@ -11,6 +13,7 @@ export const templates = [
   { key: "bellwether", name: "Harbor Works · original Rust", endpoint: "bellwether", seed: "bellwether-seed" },
   { key: "institutions", name: "Onto · Accounts", template: "accounts" },
   { key: "harbor_onto", name: "Onto · Harbor Works", template: "harbor" },
+  { key: "institutions_expansion", name: "Onto · Missing domain demo", template: "expansion-demo" },
   { key: "institutions_generated", name: "Onto · Generated company", template: "generative" },
   { key: "onto_review", name: "Onto · Story review", template: "story-review" },
 ];
@@ -39,10 +42,10 @@ export function createRunApp(env = globalThis, { createCarousel = createAgentCar
   const $ = (id) => env.document.querySelector(`#${id}`);
   const state = {
     selection: "", runs: [], seed: null, data: null, frames: [], selected: 0, evidenceSeq: 0,
-    follow: true, view: "facts", worldFocus: "world", pending: false, loading: false,
+    follow: true, presenting: false, view: "facts", worldFocus: "world", pending: false, loading: false,
     keyAvailable: null, message: "", pollError: "", pauseRequested: false,
   };
-  let version = 0, polling = false, timer, worldKey = "", agentStateKey = "";
+  let version = 0, polling = false, timer, presentationTimer, presentationEnd = null, focusedWorkflow = "", worldKey = "", agentStateKey = "";
   const carousel = createCarousel($("agent-card"), env);
   const savedId = () => state.selection.startsWith("run:") ? state.selection.slice(4) : null;
   const template = () => templates.find((item) => state.selection === `new:${item.key}`);
@@ -94,23 +97,20 @@ export function createRunApp(env = globalThis, { createCarousel = createAgentCar
   }
   function render(animate = false) {
     const run = state.data?.run, draft = template();
-    if (state.follow) state.selected = Math.max(0, state.frames.length - 1);
+    if (state.follow && !state.presenting) state.selected = Math.max(0, state.frames.length - 1);
     state.selected = Math.max(0, Math.min(state.selected, state.frames.length - 1));
     renderOptions();
     const config = run?.config || (state.seed && draft ? templateConfig(draft, state.seed) : null);
     const label = run ? runLabel(run) : draft?.name || "Select an experiment";
-    $("goal").textContent = label;
     env.document.title = `${label} · Frontier`;
-    $("objective").textContent = run?.world.goal || state.seed?.world.goal || "Choose an experiment, then run it or advance one action at a time.";
-    $("objective").hidden = false;
     $("experiment").disabled = state.pending || state.loading;
     const reason = blocker();
     const running = run?.status === "running";
     const reviewing = !!run && !state.follow && state.selected < state.frames.length - 1;
     $("run").textContent = state.pending ? "Working…" : running ? "Pause" : state.pauseRequested && run?.busy ? "Pausing…" : "Run";
     $("step").textContent = reviewing ? "Step forward" : run?.busy && !running && !state.pauseRequested ? "Stepping…" : "Step";
-    $("run").disabled = state.pending || state.loading || (running ? false : !!reason || active(run));
-    $("step").disabled = reviewing ? state.pending || state.loading : !!reason || active(run);
+    $("run").disabled = state.pending || state.loading || (running ? false : !!reason || active(run) || state.presenting);
+    $("step").disabled = reviewing ? state.pending || state.loading : !!reason || active(run) || state.presenting;
     $("back").disabled = state.pending || state.loading || state.selected === 0;
     $("run").title = running ? "Pause after the current action finishes" : reason || "Run until finished, paused, or a limit is reached";
     $("step").title = reviewing ? "Inspect the next recorded state; no action is executed" : reason || (active(run) ? "Wait for the current action to finish" : "Execute one agent action");
@@ -119,27 +119,44 @@ export function createRunApp(env = globalThis, { createCarousel = createAgentCar
       ? state.pauseRequested ? "Pausing after this action" : "Executing one action" : run?.status === "error" ? "Stopped after error"
         : run?.status === "exhausted" ? "Limit reached" : finished(run) ? "Finished" : run ? "Paused" : "Ready";
     $("status").dataset.state = running || run?.busy ? "running" : run?.status || "ready";
-    $("run-meta").textContent = config ? config.demo
+    const reserved = run?.reserved > 1e-12 ? ` + ${money(run.reserved)} reserved` : "";
+    const modelDetails = config ? config.demo
       ? `Scripted · no model calls${run ? ` · ${run.actions} / ${config.action_limit} actions` : ""}`
-      : `Live · ${config.actor_model} · ${money(config.dollar_limit)} run limit${run ? ` · ${money(run.charged)} charged${run.reserved ? ` + ${money(run.reserved)} reserved` : ""} · ${run.actions} / ${config.action_limit} actions · ${run.calls} calls` : ""}` : "";
+      : `Live · ${config.actor_model} · ${money(config.dollar_limit)} run limit${run ? ` · ${money(run.charged)} charged${reserved} · ${run.actions} / ${config.action_limit} actions · ${run.calls} calls` : ""}` : "";
+    const metaItems = !config ? [] : config.demo
+      ? ["Scripted", run ? `${run.actions} actions` : "no model calls"]
+      : ["Live", `${money(run?.charged)} / ${money(config.dollar_limit)}`,
+        ...(run?.reserved > 1e-12 ? [`${money(run.reserved)} reserved`] : []),
+        run ? `${run.calls} calls` : "run limit"];
+    $("run-meta").innerHTML = metaItems.map((item) => `<span>${esc(item)}</span>`).join("");
+    $("run-meta").title = modelDetails;
+    $("run-meta").setAttribute("aria-label", modelDetails);
     const runError = run?.status === "error" ? [...(state.data.events || [])].reverse().find((event) => event.kind === "error")?.evidence?.error : "";
     const warning = state.message || state.pollError || runError || (!state.loading && !state.pending && !active(run) && !finished(run) ? reason : "");
     $("error").textContent = warning;
     $("error").hidden = !warning;
     const frame = state.frames[state.selected];
-    $("agent-meta").textContent = run ? config.demo ? "Scripted actor" : "Live actor" : "Starting state";
     $("world-label").textContent = frame?.world?.ontology ? "Institution" : "World";
-    $("world-meta").textContent = frame?.world?.ontology ? "Ontolang" : state.follow ? "Latest checkpoint" : "Recorded checkpoint";
-    $("position").textContent = frame ? `${run ? "Checkpoint" : "Preview"} ${state.selected + 1}${run ? ` of ${state.frames.length} · ${state.follow ? "following latest" : "viewing history"}` : " · run or step to begin"}` : "No execution selected";
+    if (frame?.workflow && focusedWorkflow !== `${state.selection}:${frame.event.seq}`) {
+      focusedWorkflow = `${state.selection}:${frame.event.seq}`;
+      if (["blocked", "ready"].includes(frame.workflow.phase)) {
+        state.view = "domains";
+        state.worldFocus = frame.workflow.phase === "ready" ? `world/${encodeURIComponent(`module:${frame.workflow.module}`)}` : "world";
+      }
+    }
+    $("position").textContent = frame ? `${run ? "Checkpoint" : "Preview"} ${state.selected + 1}${run ? ` of ${state.frames.length} · ${state.presenting ? "replaying recorded updates" : state.follow ? "following latest" : "viewing history"}` : " · run or step to begin"}` : "No execution selected";
+    $("replay-expansion").hidden = !state.frames.some((item) => item.workflow?.phase === "succeeded");
+    $("replay-expansion").disabled = state.pending || state.loading || state.presenting;
+    $("replay-expansion").title = "Replay the recorded expansion; no model calls or actions";
     $("previous").disabled = !frame || state.selected === 0;
     $("next").disabled = !frame || state.selected >= state.frames.length - 1;
     $("history").disabled = state.frames.length < 2;
     $("history").max = Math.max(0, state.frames.length - 1);
     $("history").value = state.selected;
     $("history").setAttribute("aria-valuetext", `Checkpoint ${state.selected + 1} of ${state.frames.length}`);
-    $("latest").hidden = !run || state.follow;
-    $("latest").disabled = !run || state.follow;
-    for (const view of ["facts", "tree", "domains"]) {
+    $("latest").hidden = !run || (state.follow && !state.presenting);
+    $("latest").disabled = !run || (state.follow && !state.presenting);
+    for (const view of worldViews) {
       $(`${view}-tab`).setAttribute("aria-selected", String(view === state.view));
       $(`${view}-tab`).tabIndex = view === state.view ? 0 : -1;
     }
@@ -153,9 +170,10 @@ export function createRunApp(env = globalThis, { createCarousel = createAgentCar
     carousel.update(state.frames, state.selected, state.data || {}, state.selection, animate);
     // Read-only actions and refusals do not move the world card. The comparison
     // frame is kept with each changed world, so its field deltas remain visible.
-    const signature = worldSignature(frame.world);
+    const signatureOf = state.view === "ontolang" ? sourceSignature : worldSignature;
+    const signature = signatureOf(frame.world);
     let changedAt = state.selected;
-    while (changedAt > 0 && worldSignature(state.frames[changedAt - 1].world) === signature) --changedAt;
+    while (changedAt > 0 && signatureOf(state.frames[changedAt - 1].world) === signature) --changedAt;
     const nextWorldKey = `${state.selection}:${state.view}:${state.worldFocus}:${state.frames[changedAt].event.seq}:${signature}`;
     if (nextWorldKey !== worldKey) {
       updateWorld($("world-card"), renderWorld({ ...frame, world_checkpoint: changedAt + 1 }, state.frames[changedAt - 1], state.view, state.worldFocus));
@@ -163,8 +181,44 @@ export function createRunApp(env = globalThis, { createCarousel = createAgentCar
     }
   }
 
+  function stopPresentation() {
+    if (presentationTimer != null) env.clearTimeout?.(presentationTimer);
+    presentationTimer = undefined;
+    presentationEnd = null;
+    state.presenting = false;
+  }
+  function advancePresentation() {
+    const phase = state.frames[state.selected]?.workflow?.phase;
+    presentationTimer = env.setTimeout(() => {
+      presentationTimer = undefined;
+      const end = presentationEnd ?? state.frames.length - 1;
+      if (state.selected < end) ++state.selected;
+      state.presenting = state.selected < end;
+      if (!state.presenting) presentationEnd = null;
+      render(true);
+      if (state.presenting) advancePresentation();
+    }, phase === "blocked" ? 1000 : phase === "ready" ? 1500 : 600);
+  }
+
+  function replayExpansion() {
+    if (state.pending || state.loading || !env.setTimeout) return;
+    const complete = state.frames.findLastIndex((frame) => frame.workflow?.phase === "succeeded");
+    if (complete < 0) return;
+    const id = state.frames[complete].workflow.id;
+    const start = state.frames.findIndex((frame) => frame.workflow?.id === id && frame.workflow.phase === "blocked");
+    if (start < 0) return;
+    stopPresentation();
+    state.follow = false;
+    state.selected = start;
+    state.presenting = true;
+    presentationEnd = complete;
+    render(true);
+    advancePresentation();
+  }
+
   function applyData(next) {
     if (next.unchanged) return;
+    const previousCount = state.frames.length;
     const selectedSeq = !state.follow ? state.frames[state.selected]?.event.seq : null;
     if (next.incremental) {
       if (!state.data || next.from_seq !== state.evidenceSeq) return;
@@ -172,6 +226,14 @@ export function createRunApp(env = globalThis, { createCarousel = createAgentCar
     } else state.data = next;
     state.evidenceSeq = next.run.seq;
     state.frames = traceFrames(state.data);
+    // Polling can deliver generation and success together. Present their saved
+    // checkpoints in order without slowing execution or issuing another command.
+    if (state.follow && !state.presenting && env.setTimeout && !env.matchMedia?.("(prefers-reduced-motion: reduce)").matches && previousCount > 0
+      && state.frames.slice(previousCount).some((frame) => frame.workflow)) {
+      state.selected = previousCount;
+      state.presenting = state.selected < state.frames.length - 1;
+      if (state.presenting) advancePresentation();
+    }
     if (selectedSeq != null) {
       const index = state.frames.findIndex((frame) => frame.event.seq === selectedSeq);
       if (index !== -1) state.selected = index;
@@ -181,6 +243,8 @@ export function createRunApp(env = globalThis, { createCarousel = createAgentCar
   async function select(selection) {
     if (state.pending) return;
     const token = ++version;
+    stopPresentation();
+    focusedWorkflow = "";
     state.loading = true;
     state.message = "";
     state.pollError = "";
@@ -193,6 +257,7 @@ export function createRunApp(env = globalThis, { createCarousel = createAgentCar
       state.selection = selection;
       state.seed = item ? next : null;
       state.data = null;
+      state.frames = [];
       state.evidenceSeq = 0;
       if (item) state.frames = [{ world: next.world, event: { seq: 0, kind: "seed", summary: "Experiment starting state", evidence: {} } }];
       else applyData(next);
@@ -231,7 +296,7 @@ export function createRunApp(env = globalThis, { createCarousel = createAgentCar
   }
   async function control(command) {
     if (state.pending || state.loading) return;
-    if (command !== "pause" && (blocker() || active(state.data?.run))) return;
+    if (command !== "pause" && (blocker() || active(state.data?.run) || state.presenting)) return;
     ++version;
     state.pending = true;
     state.message = "";
@@ -262,6 +327,7 @@ export function createRunApp(env = globalThis, { createCarousel = createAgentCar
     finally { state.pending = false; render(true); }
   }
   function navigate(index) {
+    stopPresentation();
     state.selected = Math.max(0, Math.min(index, state.frames.length - 1));
     state.follow = state.selected === state.frames.length - 1;
     render(true);
@@ -277,17 +343,18 @@ export function createRunApp(env = globalThis, { createCarousel = createAgentCar
     $("previous").onclick = () => navigate(state.selected - 1);
     $("next").onclick = () => navigate(state.selected + 1);
     $("latest").onclick = () => navigate(state.frames.length - 1);
+    $("replay-expansion").onclick = replayExpansion;
     $("agent-card").onclick = (event) => {
       const button = event.target.closest("[data-checkpoint]");
       if (button) navigate(Number(button.dataset.checkpoint));
     };
-    for (const view of ["facts", "tree", "domains"]) {
+    for (const view of worldViews) {
       $(`${view}-tab`).onclick = () => setView(view);
       $(`${view}-tab`).onkeydown = (event) => {
         if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
           event.preventDefault();
-          const views = ["facts", "tree", "domains"];
-          const next = event.key === "Home" ? views[0] : event.key === "End" ? views.at(-1) : views[(views.indexOf(view) + (event.key === "ArrowRight" ? 1 : 2)) % views.length];
+          const views = worldViews;
+          const next = event.key === "Home" ? views[0] : event.key === "End" ? views.at(-1) : views[(views.indexOf(view) + (event.key === "ArrowRight" ? 1 : views.length - 1)) % views.length];
           setView(next); $(`${next}-tab`).focus();
         }
       };
@@ -317,7 +384,7 @@ export function createRunApp(env = globalThis, { createCarousel = createAgentCar
     timer = env.setInterval(() => { void refresh(); }, 1500);
     return state;
   }
-  return { start, select, refresh, control, navigate, setView, state, stop: () => { env.clearInterval(timer); carousel.destroy(); } };
+  return { start, select, refresh, control, navigate, setView, state, stop: () => { stopPresentation(); env.clearInterval(timer); carousel.destroy(); } };
 }
 
 if (typeof document !== "undefined") void createRunApp().start();

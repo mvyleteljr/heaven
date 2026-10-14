@@ -97,6 +97,51 @@ updates immediately. Large disclosures animate their enclosing box rather than
 every nested row. All 69 JavaScript tests pass, including growth, interruption,
 no-op and reduced-motion cases. Browser verification uses saved runs only.
 
+### Ontolang implementation tab
+
+The world pane's Ontolang tab shows the selected checkpoint's recorded source,
+grouped by foundation/module and file. Module-specific files appear before shared
+foundation files. Source is read-only, fully escaped and untruncated; non-Onto
+worlds and missing source have explicit empty states. Historical navigation only
+shows modules published by that checkpoint. All four view tabs support keyboard
+navigation. The 71 JavaScript tests pass, and the port 3001 browser preview was
+verified against saved Harbor source without executing a run.
+
+### Missing-capability presentation and live demonstration
+
+Onto construction now records `action_blocked` and `action_ready` checkpoints
+with the original action and its action ID. `/run` keeps one carousel card across
+those checkpoints and the terminal result: red with a short shake while blocked,
+neutral while the compiled capability is ready, and green only on success.
+Refused commands and errors remain red. The world pane automatically focuses the
+published module in Circle pack; new circles grow and existing geometry smoothly
+interpolates. Batched updates replay their recorded order without delaying runtime
+execution. Replay expansion repeats only the recorded visualization and makes no
+model calls. Historical navigation cancels playback. Reduced motion is supported.
+Compiler repair remains bounded by the existing generation policy; no unbounded
+retry loop or authorization bypass was added.
+
+The user authorized $2 total for a live demonstration. Saved run
+`9a306dbe-1231-477a-ac4b-82805f2616f2` (worktree port 3001) finished with six actor
+actions and eight model calls, charging **$0.0627166**. The live Sonnet generator
+published `repair-intake` after one compiler-guided repair, and the same blocked
+GET then succeeded. The actor inspected the generated model/facts, corrected one
+malformed command envelope, and received a committed receipt creating
+`RepairRequest:1` for a cracked laptop screen. A floating-point reservation residue
+of approximately 1.39e-17 remains; this is rounding dust rather than a new call.
+Complete local evidence and the exact request are in ignored
+`data/repair-intake-demo-{evidence,request}.json`. This is a successful small live
+example, not evidence of general autonomous generation reliability.
+
+The navigation now contains execution status, mode, cost and call count, with
+full model/budget details on hover or via accessibility text. The duplicate page
+title/description is removed. Agent identity and spendable funds share a compact
+strip; secondary balances remain inline, giving the action carousel more height.
+Validation: `scripts/dev check` and `scripts/dev check-jit` pass; all 75 JavaScript
+tests pass after the final UI edits. Browser checks confirm the live blocked/red,
+publication/focus and completed/green states, same action identity and no console
+errors. Optional authored Onto suites were not rerun for these presentation edits.
+
 ### Optional Onto Story review
 
 The separate **Onto · Story review** template exposes `onto.inspect`,
@@ -658,3 +703,108 @@ fixture growth) passed. The first unpaid metadata-validation attempt returned
 an invalid provider response and saved no run; a verified retry created this run.
 
 Shutdown checkpoint: undisclosed-generation run 275c1d6e-0f0f-48e0-9b95-0b11c04c25a6 paused before laptop close; 17 observations saved, charged $0.3989505, reservation $0.0. Resume this saved run after Docker startup; do not create a duplicate or restart older conditions.
+
+### Reduced execution UI density
+
+The runner uses a 12px root with rem-based dimensions for 75% text/spacing
+density, while panels retain the available viewport area. Carousel geometry
+uses the same font-derived density; animations remain in unscaled coordinates.
+Endpoint captions and the Ontolang suffix beside Institution are removed.
+Facts has one compact heading; redundant world introduction text is removed,
+and focused action/record titles are smaller. All 75 JavaScript tests pass;
+319px and 1280px browser checks show no horizontal overflow. Verification
+used saved history only, with no additional inference charges.
+
+### Dedicated missing-domain UI seed
+
+`/run?experiment=institutions_expansion` selects **Onto · Missing domain demo**.
+The `expansion-demo` institution seed reads `examples/jit/repair-intake-run.json`:
+only the immutable foundation exists initially; the actor is explicitly directed
+first to GET `/modules/repair-intake`, then inspect the generated model/facts,
+create one repair request through its Story, verify facts, and finish. It uses
+the previously demonstrated live actor/generator models, capped at $0.50,
+one expansion, nine actions, twelve calls and two compiler repair attempts.
+Selecting the seed neither saves nor starts a paid run. Existing templates and
+saved runs are unchanged. Actual actor decisions and generation remain live,
+so model/provider failures are still surfaced rather than forced green.
+
+The optional `jit_expansion_demo_seed_generates_retries_and_commits_a_ticket`
+test runs this seed through real compilation/publication/Story execution with
+mock model responses. It verifies absent/published source, identical blocked
+and retried action, committed receipt, and final ticket facts. The fixture
+`test-repair-intake.onto` is test-only and never supplied to live generation.
+All 76 JavaScript tests and the targeted optional integration test pass; no new
+paid inference was used to validate this seed.
+
+The agent panel now omits a spending allowance when none is modeled. It renders
+additional fields from the exact configured actor's saved instances (with module
+scope when relevant), rather than treating company facts or controlled accounts
+as personal state. Harbor's explicitly owned financial projection and Flowers'
+allowance remain intact. The missing-domain seed currently models only Ada's
+identity; it does not invent a budget. A general declared agent-state schema and
+runtime permissions remain future work. All 77 JavaScript tests pass, including
+project-specific actor fields and historical changes; full core check/Clippy/
+sandbox doctor passed for the seed change before this UI-only adjustment.
+
+### Declared, evolving agent state for Ontolang runs
+
+This supersedes the earlier note that a general agent-state declaration was
+future work. New Ontolang templates explicitly declare `definition.agent_state`
+at seed time. Its `fields` contain `key`, `label`, `kind` (string, integer,
+number, boolean), `format` (plain or usd_cents), and a `source` binding with
+`instance` and `field`. The source must be the configured actor or an explicitly
+owned record (`fields.owner` equals that actor). USD cents require integers.
+Declarations do not grant write authority; Onto Stories still enforce mutation.
+
+The host validates declarations against compiled seed facts. Generated modules
+return their own `agent_state` declaration alongside source/error in the v2
+response schema. A module may only add fields bound to its own new local records,
+not rewrite the foundation declaration or another module. Empty fields explicitly
+mean no added agent state. Source, declaration, and projected values publish
+atomically, using the existing bounded compiler-repair loop for validation errors.
+Every subsequent snapshot acceptance revalidates types and ownership before
+committing facts/receipts. Invalid updates leave both facts and agent state intact.
+
+`State.agent_state` persists `{shape, values}` at each checkpoint; actor
+observations expose named foundation/module scopes, `/model` exposes the shape,
+and `/facts` exposes shape plus current values. The left panel renders these
+fields and uses existing transitions for shape/value changes. The Ontolang tab
+also exposes each declaration. Configure experiments has a JSON declaration
+editor for editable seeds, read-only for saved runs and authored Harbor.
+Backward navigation sees only declarations and values present at that checkpoint.
+Legacy runs without declarations keep their existing projections and deserialize
+without a hash-changing default. Non-Onto experiments retain their existing state
+adapters. This version extends shape through new module scopes; it does not add
+arbitrary in-place schema replacement or direct unvalidated agent-state writes.
+
+Missing domain demo starts with Ada's name declared. Its generation brief adds
+no agent-internal fields: desks, tickets and registration status are institutional
+world state, including when owned by Ada. The deterministic integration fixture
+verifies desk status changes only in world state, with an empty module agent-state
+declaration, persistence and actor observations. A separate unobserved agent-memory
+fixture exercises shape validation; it is not live cognition or generation evidence.
+Validation: `scripts/dev check`, `scripts/dev check-jit`, `scripts/dev check-onto`,
+and all 79 JavaScript tests pass. No paid inference has been started for these changes.
+
+### Agent-state classification guidance
+
+`src/agent_state_guidance.md` is included in every Ontolang construction directive
+(and therefore repair attempts). The generator system prompt reinforces the same
+boundary: classify meaning and perspective, not ownership or storage. The guidance
+contrasts institutional assignments with chosen intentions, live status with recorded
+observations, and organizational balances with explicit actor spending allowances.
+It disallows fabricated cognition, automatic world-to-memory mirroring, and fields
+created merely to fill the UI. Ambiguous domain facts stay in the world; an empty
+agent declaration is valid. The repair-intake brief explicitly follows that rule.
+Seed authors receive the same ownership warning in the declaration editor.
+
+This is prompt guidance, not a semantic proof: runtime validation still enforces
+bindings, types, ownership and atomic publication, not the meaning of arbitrary
+fields. Saved runs and existing authored financial projections are unchanged.
+
+Classification follow-up validation: `scripts/dev check` passed (79 JavaScript
+tests, Rust tests, formatting, Clippy and sandbox doctor). All five optional JIT
+integration tests and four JIT main tests passed across the initial run and the
+focused recheck after correcting the new memory fixture's Story syntax. The
+port 3001 preview serves the corrected seed and editor guidance. No paid calls;
+optional authored Onto suites were not repeated for this prompt-only behavior change.

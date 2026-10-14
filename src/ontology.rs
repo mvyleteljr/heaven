@@ -22,6 +22,8 @@ pub struct Definition {
     /// V1 deliberately exposes all model facts; private/role-filtered reads need
     /// a separate adapter and cannot be enabled by merely omitting this flag.
     pub public_facts: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_state: Option<crate::agent_state::Declaration>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Receipt {
@@ -35,6 +37,8 @@ pub struct State {
     pub definition: Definition,
     pub runtime_sha256: String,
     pub snapshot: Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_state: Option<Value>,
     pub stories: Value,
     pub receipts: BTreeMap<String, Receipt>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -236,7 +240,13 @@ impl State {
         )?;
         let mut definition = definition;
         definition.source = serde_json::from_value(response["source"].clone())?;
+        let agent_state = definition
+            .agent_state
+            .as_ref()
+            .map(|shape| shape.project(&definition.actor, &response["snapshot"]))
+            .transpose()?;
         Ok(Self {
+            agent_state,
             definition,
             runtime_sha256,
             snapshot: response["snapshot"].clone(),
@@ -308,6 +318,9 @@ impl State {
         }
         if method == "GET" && path == "/model" {
             let mut document = json!({"source":self.definition.source,"stories":self.stories});
+            if let Some(shape) = &self.definition.agent_state {
+                document["agent_state"] = json!(shape);
+            }
             if self.generation.is_none() {
                 document["command_guide"] = self.command_guide(base);
             }
@@ -319,8 +332,12 @@ impl State {
                 &self.runtime_sha256,
             )?;
             self.check_protected(&response["snapshot"])?;
-            self.snapshot = response["snapshot"].clone();
-            return Ok(json!({"snapshot":self.snapshot,"standing":response["standing"]}));
+            self.accept_snapshot(&response["snapshot"])?;
+            let mut facts = json!({"snapshot":self.snapshot,"standing":response["standing"]});
+            if let Some(state) = &self.agent_state {
+                facts["agent_state"] = state.clone();
+            }
+            return Ok(facts);
         }
         ensure!(
             method == "POST" && path == "/commands",
@@ -399,7 +416,7 @@ impl State {
             "Institution state exceeds 256 KiB"
         );
         self.check_protected(&response["snapshot"])?;
-        self.snapshot = response["snapshot"].clone();
+        self.accept_snapshot(&response["snapshot"])?;
         let result = response["result"].clone();
         self.receipts.insert(
             input.command_id,
@@ -410,6 +427,18 @@ impl State {
             },
         );
         Ok(result)
+    }
+
+    fn accept_snapshot(&mut self, snapshot: &Value) -> Result<()> {
+        let agent_state = self
+            .definition
+            .agent_state
+            .as_ref()
+            .map(|shape| shape.project(&self.definition.actor, snapshot))
+            .transpose()?;
+        self.snapshot = snapshot.clone();
+        self.agent_state = agent_state;
+        Ok(())
     }
 
     fn check_protected(&self, snapshot: &Value) -> Result<()> {

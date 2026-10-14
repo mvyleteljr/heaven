@@ -179,6 +179,9 @@ fn custom_institution_guidance_does_not_offer_an_accounts_specific_command() -> 
         *source = source.replace("Clerk", "Treasurer");
     }
     definition.actor = "Treasurer:Ada".into();
+    definition.agent_state = Some(frontier::agent_state::Declaration::identity(
+        &definition.actor,
+    ));
     let mut state = ontology::State::initialize(definition)?;
     for path in ["/", "/model"] {
         let document = state.request("GET", path, None, 0)?;
@@ -203,6 +206,7 @@ fn onto_is_the_only_ledger_and_commands_survive_restart_without_duplicate_effect
         actor: "Clerk:Ada".into(),
         epoch: "2026-01-01T00:00:00Z".into(),
         public_facts: true,
+        agent_state: None,
     };
     let mut state = ontology::State::initialize(definition)?;
     assert_eq!(balances(&state), vec![10000, 5000, 2500]);

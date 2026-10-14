@@ -177,10 +177,74 @@ test("missing budgets are not inferred from institutional accounts, and zero rem
   const accounts = frame("seed");
   accounts.world.ontology.definition = { actor: "Clerk:<Ada>" };
   assert.equal(agentFunds(accounts.world), null);
-  assert.match(renderAgentState(accounts), /Not modeled/);
+  assert.doesNotMatch(renderAgentState(accounts), /Not modeled|Available to spend/);
   assert.match(renderAgentState(accounts), /Clerk:&lt;Ada&gt;/);
   assert.doesNotMatch(renderAgentState(accounts), /<Ada>|\$100.00/);
   const flowers = frame("outcome", {}, { flowers: { balance_cents: 0 } });
   assert.match(renderAgentState(flowers), /\$0.00/);
   assert.match(renderAgentState(flowers), /Customer spending allowance/);
+});
+
+test("Ontolang shows complete source files with explicit missing-source states", () => {
+  assert.match(renderWorld({ world: {} }, null, "ontolang"), /does not use Ontolang/);
+  assert.match(renderWorld(frame("seed"), null, "ontolang"), /No Ontolang source was recorded/);
+  const state = world();
+  const source = "project Company\n" + "// preserve this source line\n".repeat(80);
+  state.ontology.definition = { source: { "foundation.onto": source } };
+  state.ontology.modules = { claims: { definition: { source: { "foundation.onto": source, "generated.onto": "concept Claim\n" } } } };
+  const html = renderWorld({ world: state }, null, "ontolang");
+  assert.ok(html.includes(source));
+  const module = html.slice(html.indexOf('data-world-key="module:claims"'));
+  assert.ok(module.indexOf("generated.onto") < module.indexOf("foundation.onto"));
+});
+
+test("construction phases retain action identity and never mistake a refusal for success", () => {
+  const action = { kind: "onto.expand", inputs: { module: "claims" } };
+  const evidence = { action, action_id: 1, module: "claims", requires: ["https://institutions.local/modules/claims"], dependencies: ["https://institutions.local/"] };
+  const frames = traceFrames({ frames: [
+    frame("action_blocked", evidence, world(), 2),
+    frame("action_ready", evidence, { ontology: { modules: { claims: institution() } } }, 4),
+    frame("outcome", { action, action_id: 1, result: { committed: false, error: "Not authorized" } }, world(), 5),
+  ] });
+  assert.deepEqual(frames.map((f) => f.workflow.id), ["action:1", "action:1", "action:1"]);
+  assert.deepEqual(frames.map((f) => f.workflow.phase), ["blocked", "ready", "failed"]);
+  assert.match(renderAgent(frames[0]), /Blocked · missing capability/);
+  assert.match(renderAgent(frames[1]), /Capability ready · retrying/);
+  assert.match(renderAgent(frames[2]), /Not authorized/);
+  assert.doesNotMatch(renderAgent(frames[2]), /Resources available/);
+});
+
+
+test("agent panel renders project-specific actor fields, not unrelated world records", () => {
+  const initial = { world: { ontology: { definition: { actor: "Operator:Ada" }, snapshot: { instances: [
+    { id: "Operator:Ada", fields: { name: "Ada", activeTickets: 0, role: "Intake clerk" } },
+    { id: "Company:Core", fields: { ceiling: 100, secret: "world-only" } },
+    { id: "Operator:Other", fields: { role: "Other agent" } },
+  ] } } } };
+  const later = structuredClone(initial);
+  later.world.ontology.snapshot.instances[0].fields.activeTickets = 1;
+  const before = renderAgentState(initial), after = renderAgentState(later);
+  assert.match(before, /Active Tickets/);
+  assert.match(before, /Intake clerk/);
+  assert.match(before, />0<\/dd>/);
+  assert.match(after, />1<\/dd>/);
+  assert.doesNotMatch(after, /Available to spend|Not modeled|Ceiling|world-only|Other agent/);
+  assert.equal(initial.world.ontology.snapshot.instances[0].fields.activeTickets, 0);
+});
+
+test("declared agent shape grows with a domain and renders only that checkpoint's values", () => {
+  const identity = { fields: [{ key: "name", label: "Name", kind: "string", format: "plain", source: { instance: "Operator:Ada", field: "name" } }] };
+  const seed = { world: { ontology: { definition: { actor: "Operator:Ada", agent_state: identity }, agent_state: { shape: identity, values: { name: "Ada" } }, modules: {} } } };
+  const ready = structuredClone(seed);
+  const shape = { fields: [{ key: "last_observation", label: "Last observation", kind: "string", format: "plain", source: { instance: "AgentMemory:main", field: "lastObservation" } }] };
+  ready.world.ontology.modules["repair-intake"] = { definition: { agent_state: shape }, agent_state: { shape, values: { last_observation: "unobserved" } } };
+  const done = structuredClone(ready);
+  done.world.ontology.modules["repair-intake"].agent_state.values.last_observation = "Receipt intake-1 observed";
+  assert.doesNotMatch(renderAgentState(seed), /Last observation|Available to spend/);
+  assert.match(renderAgentState(ready), /Last observation/);
+  assert.match(renderAgentState(ready), />unobserved<\/dd>/);
+  assert.match(renderAgentState(done), />Receipt intake-1 observed<\/dd>/);
+  assert.doesNotMatch(renderAgentState(ready), /Receipt intake-1 observed/);
+  assert.match(renderWorld(done, null, "ontolang"), /Agent state declaration/);
+  assert.match(renderWorld(done, null, "ontolang"), /last_observation/);
 });

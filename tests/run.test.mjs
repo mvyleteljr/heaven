@@ -34,7 +34,7 @@ const flush = () => new Promise((resolve) => setImmediate(resolve));
 
 // Exercise the real controller and render projections with a small DOM adapter.
 // Every execution response is a local fixture; these tests make no network calls.
-async function browser({ search = "", stored = "", keyAvailable = true, respond } = {}) {
+async function browser({ search = "", stored = "", keyAvailable = true, respond, clock = {} } = {}) {
   const elements = new Map();
   const element = (id) => {
     const selector = id.startsWith("#") ? id : `#${id}`;
@@ -52,7 +52,7 @@ async function browser({ search = "", stored = "", keyAvailable = true, respond 
   const defaultResponse = (path, options) => {
     if (path === "runs") return [...runs.values()].map((value) => value.run);
     if (path === "health") return { key_available: keyAvailable };
-    if (["institution-seed?template=generative", "institution-seed?template=story-review"].includes(path)) return generatedSeed;
+    if (["institution-seed?template=generative", "institution-seed?template=story-review", "institution-seed?template=expansion-demo"].includes(path)) return generatedSeed;
     if (path.startsWith("institution-seed")) return institutionSeed;
     if (path.endsWith("-seed")) return seed;
     if (["flowers", "bellwether", "institutions"].includes(path) && options.method === "POST") {
@@ -71,6 +71,7 @@ async function browser({ search = "", stored = "", keyAvailable = true, respond 
   };
   let responder = respond;
   const env = {
+    ...clock,
     document: { querySelector: element, title: "" },
     localStorage: { getItem: () => preference, setItem: (_, value) => { preference = value; } },
     get location() { return url; },
@@ -129,7 +130,7 @@ for (const selected of templates) {
         assert.equal(body.institution, undefined);
         assert.equal(body.config, undefined);
       }
-      if (["generative", "story-review"].includes(selected.template)) {
+      if (["generative", "story-review", "expansion-demo"].includes(selected.template)) {
         assert.deepEqual(body.generation, generation);
         for (const [key, value] of Object.entries(generatedSeed.config)) assert.deepEqual(body.config[key], value);
       }
@@ -445,4 +446,74 @@ test("persistent agent budget follows historical snapshots without execution", a
   b.navigate(1);
   assert.match(b.element("agent-state").innerHTML, /\$4,000.00/);
   assert.equal(b.posts().length, 0);
+});
+
+test("Ontolang source follows recorded publication history and tab keys never execute actions", async () => {
+  const saved = detail("source", 2);
+  const initial = frame(1);
+  initial.world.ontology = { definition: { source: { "foundation.onto": "project Company\n" } }, modules: {} };
+  const published = structuredClone(initial);
+  published.event = { seq: 2, kind: "expansion", evidence: {} };
+  published.world.ontology.modules.claims = { definition: { source: { "generated.onto": 'concept Claim\n  note "<script>alert(1)</script>"\n' } } };
+  saved.frames = [initial, published];
+  saved.run.world = published.world;
+  const b = await browser({ search: "?run=source", respond: (path, options, fallback) => path.startsWith("runs/source") ? saved : fallback(path, options) });
+  b.element("ontolang-tab").onclick();
+  assert.equal(b.element("ontolang-tab").attributes["aria-selected"], "true");
+  assert.equal(b.element("world-panel").attributes["aria-labelledby"], "ontolang-tab");
+  assert.match(b.element("world-card").innerHTML, /generated\.onto/);
+  assert.match(b.element("world-card").innerHTML, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+  assert.doesNotMatch(b.element("world-card").innerHTML, /<script>/);
+  b.navigate(0);
+  assert.match(b.element("world-card").innerHTML, /foundation\.onto/);
+  assert.doesNotMatch(b.element("world-card").innerHTML, /generated\.onto/);
+  b.navigate(1);
+  assert.match(b.element("world-card").innerHTML, /generated\.onto/);
+  const key = (tab, value) => b.element(`${tab}-tab`).onkeydown({ key: value, preventDefault() {} });
+  key("ontolang", "ArrowRight");
+  assert.equal(b.state.view, "facts");
+  key("facts", "ArrowLeft");
+  assert.equal(b.state.view, "ontolang");
+  assert.equal(b.element("ontolang-tab").focused, true);
+  assert.equal(b.posts().length, 0);
+});
+
+test("batched generation replays blocked, world publication and retry without extra execution", async () => {
+  const timers = new Map(); let timer = 0;
+  const clock = { setTimeout: (fn) => { timers.set(++timer, fn); return timer; }, clearTimeout: (id) => timers.delete(id) };
+  const b = await browser({ search: "?run=saved", clock });
+  const action = { kind: "onto.expand", inputs: { module: "claims" } };
+  const evidence = { action_id: 1, action, module: "claims", requires: ["https://institutions.local/modules/claims"], dependencies: [] };
+  const blocked = { ...frame(2, "action_blocked"), event: { seq: 2, kind: "action_blocked", evidence } };
+  const ready = { ...frame(4, "action_ready"), world: { ontology: { modules: { claims: { snapshot: { instances: [] } } } } }, event: { seq: 4, kind: "action_ready", evidence } };
+  const done = { ...ready, event: { seq: 5, kind: "outcome", evidence: { action_id: 1, action, result: { module: "claims" } } } };
+  const saved = detail("saved", 5); saved.frames = [frame(1), blocked, ready, done];
+  b.respond((path, options, fallback) => path.startsWith("runs/saved") ? saved : fallback(path, options));
+  await b.refresh();
+  assert.equal(b.state.selected, 1);
+  assert.match(b.element("agent-card").innerHTML, /Blocked · missing capability/);
+  assert.equal(b.state.view, "domains");
+  const advance = () => { const [id, fn] = timers.entries().next().value; timers.delete(id); fn(); };
+  advance();
+  assert.equal(b.state.selected, 2);
+  assert.equal(b.state.worldFocus, "world/module%3Aclaims");
+  assert.match(b.element("agent-card").innerHTML, /Capability ready · retrying/);
+  advance();
+  assert.equal(b.state.selected, 3);
+  assert.equal(b.state.presenting, false);
+  assert.match(b.element("agent-card").innerHTML, /Resources available/);
+  b.navigate(1);
+  assert.equal(b.state.worldFocus, "world");
+  assert.equal(b.posts().length, 0);
+  b.element("replay-expansion").onclick();
+  assert.equal(b.state.selected, 1);
+  assert.equal(b.state.follow, false);
+  advance(); assert.equal(b.state.selected, 2);
+  advance(); assert.equal(b.state.selected, 3);
+  assert.equal(b.state.presenting, false);
+  b.element("replay-expansion").onclick();
+  b.navigate(0);
+  assert.equal(timers.size, 0, "manual navigation cancels recorded playback");
+  assert.equal(b.posts().length, 0);
+  b.stop(); assert.equal(timers.size, 0);
 });

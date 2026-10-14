@@ -427,7 +427,7 @@ async fn create_institutions(
 ) -> Api<Run> {
     mutation(&headers)?;
     let harbor = match request.template.as_deref() {
-        None | Some("accounts" | "generative" | "story-review") => false,
+        None | Some("accounts" | "generative" | "story-review" | "expansion-demo") => false,
         Some("harbor") => true,
         _ => return Err(anyhow::anyhow!("Unknown institution template").into()),
     };
@@ -440,7 +440,7 @@ async fn create_institutions(
     let review = request.template.as_deref() == Some("story-review");
     if matches!(
         request.template.as_deref(),
-        Some("generative" | "story-review")
+        Some("generative" | "story-review" | "expansion-demo")
     ) && request.generation.is_none()
     {
         return Err(anyhow::anyhow!("The generative template requires a generation policy").into());
@@ -460,7 +460,9 @@ async fn create_institutions(
         .name
         .filter(|s| !s.trim().is_empty())
         .unwrap_or_else(|| {
-            if review {
+            if request.template.as_deref() == Some("expansion-demo") {
+                "Onto · Missing domain demo"
+            } else if review {
                 "Onto · Story review"
             } else if harbor {
                 "Onto · Harbor Works"
@@ -1137,7 +1139,7 @@ fn finish_action(store: &mut Store, run: &mut Run, action: Action, result: Value
         run,
         kind,
         &action_summary(&action),
-        json!({"action":action,"result":result,"elapsed_seconds":run.world.tools.as_ref().map(|s|s.elapsed_seconds)}),
+        json!({"action":action,"action_id":run.actions,"result":result,"elapsed_seconds":run.world.tools.as_ref().map(|s|s.elapsed_seconds)}),
     )
 }
 
@@ -1326,6 +1328,15 @@ async fn construct(app: &App, id: &str, action: &Action) -> Result<()> {
             "Construct missing resource",
             json!(&request),
         )?;
+        if request.directive.requirements["functionality"] == "onto.module.v1" {
+            let evidence = json!({"action":action,"action_id":run.actions,"module":request.directive.requirements["module"],"request_id":request.request_id,"requires":[request.directive.target],"dependencies":request.directive.requirements["dependencies"]});
+            store.commit(
+                &mut run,
+                "action_blocked",
+                "Action waiting for a missing capability",
+                evidence,
+            )?;
+        }
         request
     };
     let executable = request.directive.requirements["functionality"] == "onto.module.v1";
@@ -1400,6 +1411,15 @@ async fn construct(app: &App, id: &str, action: &Action) -> Result<()> {
         "Resource published",
         json!({"proposal":proposal,"request_id":request.request_id,"latency_ms":started.elapsed().as_millis(),"validation_ms":validation_ms,"generation_attempts":attempt+1,"request_bytes":serde_json::to_vec(&request)?.len()}),
     )?;
+    if executable {
+        let evidence = json!({"action":action,"action_id":run.actions,"module":request.directive.requirements["module"],"request_id":request.request_id,"requires":[request.directive.target],"dependencies":request.directive.requirements["dependencies"]});
+        store.commit(
+            &mut run,
+            "action_ready",
+            "Capability published; retrying the same action",
+            evidence,
+        )?;
+    }
     Ok(())
 }
 

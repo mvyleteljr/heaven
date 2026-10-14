@@ -73,3 +73,19 @@ test("reduced motion cancels pending transitions and applies new state immediate
   assert.equal(calls.length, 1);
   assert.equal(root.height, 50);
 });
+
+test("new circle-pack nodes grow and retained circles interpolate their geometry", () => {
+  const { root, env, nodes, calls, element } = scene();
+  const circle = element(80, root);
+  circle.namespaceURI = "http://www.w3.org/2000/svg";
+  circle.tagName = "circle";
+  circle.geometry = { cx: 100, cy: 100, r: 40 };
+  circle.getAttribute = (key) => circle.geometry[key];
+  transitionState(root, () => { nodes.push(circle); return { added: new Set([circle]) }; }, env);
+  assert.equal(calls[0].motion.frames[0].r, "0px");
+  assert.equal(calls[0].motion.frames[1].r, "40px");
+  transitionState(root, () => { circle.geometry = { cx: 160, cy: 120, r: 50 }; }, env);
+  const frames = calls.at(-1).motion.frames;
+  assert.equal(frames[0].cx, "100px"); assert.equal(frames[1].cx, "160px");
+  assert.equal(frames[0].r, "40px"); assert.equal(frames[1].r, "50px");
+});

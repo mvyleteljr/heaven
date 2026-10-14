@@ -1,0 +1,57 @@
+{
+  "name": "Onto \u00b7 Missing domain demo",
+  "template": "expansion-demo",
+  "institution": {
+    "actor": "Operator:Ada",
+    "epoch": "2026-01-01T00:00:00Z",
+    "public_facts": true,
+    "source": {
+      "foundation.onto": "project OpenInstitution\n  @description \"A small immutable foundation for on-demand executable capabilities.\"\n\nactor Operator\n  @type organization\n  @affiliation internal\n  @access authenticated\n\nobject Company\n  name: string @required\n  ceiling: int @required\n  @rule Company.ceiling is at least 0\n\nseed Operator\n  name: \"Ada\"\n\nseed Company\n  name: \"Core\", ceiling: 100\n"
+    },
+    "agent_state": {
+      "fields": [
+        {
+          "key": "name",
+          "label": "Name",
+          "kind": "string",
+          "format": "plain",
+          "source": {
+            "instance": "Operator:Ada",
+            "field": "name"
+          }
+        }
+      ]
+    }
+  },
+  "config": {
+    "action_limit": 9,
+    "actor_model": "openai/gpt-4.1-mini",
+    "actor_settings": {
+      "provider": "openrouter",
+      "temperature": 0.2,
+      "max_tokens": 2048,
+      "reasoning_effort": null
+    },
+    "actor_user_prompt": "Your first action must be http.request with method GET and url https://institutions.local/modules/repair-intake. Request that exact capability boundary before any search, root listing, model or facts request. Do not request /modules/ without a name. Then register one repair intake ticket for a fictional cracked laptop screen: inspect the capability\u2019s exact model and facts, use its authorized Story interface to create one ticket, verify the committed receipt and resulting facts, and finish with the observed result. Use only repair-intake. Do not assume Story syntax or record IDs before inspecting them. Do not repeat a committed command, request another capability, use shell tools, or claim success without a committed receipt. If generation or the operation fails, report the observed failure and finish.",
+    "call_limit": 12,
+    "context_limit_bytes": 256000,
+    "demo": false,
+    "dollar_limit": 0.5,
+    "expansion_limit": 1,
+    "generator_settings": {
+      "provider": "openrouter",
+      "temperature": 0.3,
+      "max_tokens": 8192,
+      "reasoning_effort": null
+    },
+    "memory": null,
+    "provider": "openai",
+    "structured_actions": true,
+    "world_model": "anthropic/claude-sonnet-4.6"
+  },
+  "generation": {
+    "brief": "A fictional device repair company needs a small repair-intake capability. Model customer repair requests with a description and status, and authorized single-actor Stories to register and progress a request. Use the existing Operator actor. Create coherent local operating rules and initial facts; keep the module small, executable and understandable. Preserve the shared foundation. No cross-module writes or external effects. Do not manufacture successful actions or bypass a rule to satisfy the investigator. Desk status, ticket status, assignments, and receipts are institutional world state, even if an Operator owns or controls them. This capability requires no new agent-internal state: return agent_state with an empty fields array. Preserve the existing actor identity declaration. Do not invent a personal budget, plan, belief, or memory to fill the agent panel.",
+    "max_modules": 1,
+    "repair_attempts": 2
+  }
+}

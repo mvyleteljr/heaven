@@ -155,6 +155,11 @@
         </div>
         <label class="source-label">Ontolang source<textarea id="institution-source" rows="18" spellcheck="false"></textarea></label>
         <p id="institution-source-note" class="field-note"></p>
+        <details>
+          <summary>Agent state declaration</summary>
+          <label class="source-label">Field shape (JSON)<textarea id="institution-agent-state" rows="10" spellcheck="false"></textarea></label>
+          <p class="field-note">Declare fields with a key, label, kind (string, integer, number, boolean), format (plain or usd_cents), and source (instance and field). Declare actor-specific resources or recorded perspective; desk, ticket, and workflow status belong to the world. Ownership alone does not make a field agent state. Bind the configured actor or its owned records. Stories update the values; generated modules declare their own additions. Use {"fields":[]} for no agent fields.</p>
+        </details>
         <section id="institution-generation" hidden>
           <h3>Capability generation</h3>
           <label class="source-label">Company brief<textarea id="generation-brief" rows="5" required maxlength="8000"></textarea></label>

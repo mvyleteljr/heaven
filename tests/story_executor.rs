@@ -80,13 +80,15 @@ fn story_execution_compiles_additions_and_preserves_receipts_state_and_boundarie
     let source = include_str!("../examples/jit/test-capability.onto");
     let invalid = institutions::proposal(
         &request,
-        &json!({"source":"object Broken\n  value: invented\n","error":null}).to_string(),
+        &json!({"source":"object Broken\n  value: invented\n","agent_state":{"fields":[]},"error":null}).to_string(),
     )?;
     let before = run.world.clone();
     assert!(construction::publish(&mut run, &request, &invalid).is_err());
     assert_eq!(run.world, before);
-    let proposal =
-        institutions::proposal(&request, &json!({"source":source,"error":null}).to_string())?;
+    let proposal = institutions::proposal(
+        &request,
+        &json!({"source":source,"agent_state":{"fields":[]},"error":null}).to_string(),
+    )?;
     construction::publish(&mut run, &request, &proposal)?;
     assert_eq!(run.world.apply(&expand)?["module"], "claims");
     assert!(construction::direct(&run, &expand)?.request.is_none());
