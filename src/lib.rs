@@ -13,6 +13,7 @@ pub mod business;
 pub mod construction;
 pub mod experiments;
 pub mod hosting;
+pub mod institution_world;
 pub mod institutions;
 pub mod memory;
 pub mod ontology;
@@ -20,6 +21,7 @@ pub mod story_executor;
 pub use experiments::flowers;
 pub mod tools;
 pub mod workspace;
+pub mod worldgen;
 
 pub fn reasoning_efforts(model: &Value) -> Vec<String> {
     let reasoning = &model["reasoning"];
@@ -48,6 +50,8 @@ pub struct Document {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct World {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub worldgen: Option<worldgen::State>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub harbor_onto: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -70,6 +74,7 @@ pub struct World {
 impl Default for World {
     fn default() -> Self {
         Self {
+            worldgen: None,
             harbor_onto: false,
             ontology: None,
             business: None,
@@ -251,6 +256,7 @@ impl ActorSettings {
                         .is_some_and(|ps| ps.iter().any(|v| v == p))
                 };
                 e["status"] == 0
+                    && (self.endpoint.is_empty() || e["tag"] == self.endpoint)
                     && supports("response_format")
                     && supports("max_tokens")
                     && (self.temperature.is_none() || supports("temperature"))
@@ -698,11 +704,30 @@ mod tests {
             temperature: None,
             max_tokens: 2048,
             reasoning_effort: Some("high".into()),
-            endpoint: "untrusted".into(),
+            endpoint: String::new(),
         };
         let endpoint = json!({"status":0,"tag":"test-provider","supported_parameters":["max_tokens","response_format","reasoning"],"max_completion_tokens":4096,"pricing":{"prompt":"0.000001","completion":"0.000003"}});
         let catalog = json!({"data":{"endpoints":[endpoint]}});
         settings.resolve(&catalog)?;
+        let mut alternatives = catalog.clone();
+        let mut alternate = alternatives["data"]["endpoints"][0].clone();
+        alternate["tag"] = json!("alternate");
+        alternatives["data"]["endpoints"]
+            .as_array_mut()
+            .unwrap()
+            .push(alternate);
+        let mut pinned = settings.clone();
+        pinned.endpoint = "alternate".into();
+        pinned.resolve(&alternatives)?;
+        assert_eq!(pinned.endpoint, "alternate");
+        pinned.endpoint = "unknown".into();
+        assert!(pinned.resolve(&alternatives).is_err());
+        pinned.endpoint = "alternate".into();
+        alternatives["data"]["endpoints"][1]["pricing"]["completion"] = json!("0.000025");
+        assert!(
+            pinned.resolve(&alternatives).is_err(),
+            "Do not silently switch an invalid pin to a cheaper route"
+        );
         let mut expensive = catalog.clone();
         expensive["data"]["endpoints"][0]["pricing"]["completion"] = json!("0.000025");
         assert!(

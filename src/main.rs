@@ -303,6 +303,7 @@ async fn main() -> Result<()> {
         .route("/api/runs/{id}/control", post(control))
         .route("/api/runs/{id}/fork", post(fork))
         .route("/api/runs/{id}/intervene", post(intervene))
+        .route("/api/runs/{id}/provider-route", post(provider_route))
         .route("/api/health", get(health))
         .with_state(app);
     let port = std::env::var("PORT").unwrap_or("3000".into());
@@ -491,6 +492,8 @@ async fn create_institutions(
         }
         if review {
             frontier::story_executor::configure(&mut world);
+        } else {
+            frontier::institution_world::configure_tools(&mut world);
         }
         Ok::<_, anyhow::Error>(world)
     })
@@ -885,6 +888,69 @@ async fn control(
     Ok(Json(run))
 }
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProviderRoute {
+    role: String,
+    endpoint: String,
+}
+
+fn route_config(run: &Run, change: &ProviderRoute) -> Result<Config> {
+    ensure!(
+        !run.busy && run.status != "running",
+        "Pause the run before changing provider route"
+    );
+    ensure!(
+        !change.endpoint.trim().is_empty(),
+        "An explicit provider endpoint is required"
+    );
+    let mut config = run.config.clone();
+    let settings = match change.role.as_str() {
+        "actor" => &mut config.actor_settings,
+        "world" => &mut config.generator_settings,
+        _ => anyhow::bail!("Provider role must be actor or world"),
+    };
+    settings
+        .as_mut()
+        .ok_or_else(|| anyhow::anyhow!("This run has no explicit settings for that role"))?
+        .endpoint = change.endpoint.clone();
+    Ok(config)
+}
+
+async fn provider_route(
+    State(app): State<App>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+    Json(change): Json<ProviderRoute>,
+) -> Api<Run> {
+    mutation(&headers)?;
+    let before = app.store.lock().unwrap().load(&id)?;
+    let mut config = route_config(&before, &change)?;
+    validate_actor(&app, &mut config).await?;
+    let mut store = app.store.lock().unwrap();
+    let mut run = store.load(&id)?;
+    if run.seq != before.seq || run.busy || run.status == "running" {
+        return Err(anyhow::anyhow!(
+            "Run changed during provider validation; route was not changed"
+        )
+        .into());
+    }
+    let previous = if change.role == "world" {
+        &run.config.generator_settings
+    } else {
+        &run.config.actor_settings
+    };
+    let evidence = json!({"role":change.role,"previous_endpoint":previous.as_ref().map(|s| &s.endpoint),"endpoint":change.endpoint,"note":"Route only; world, spending and uncertain reservations preserved."});
+    run.config = config;
+    store.commit(
+        &mut run,
+        "provider_route",
+        "Provider route changed",
+        evidence,
+    )?;
+    Ok(Json(run))
+}
+
+#[derive(Deserialize)]
 struct Fork {
     seq: u64,
 }
@@ -1213,7 +1279,7 @@ async fn step(app: &App, id: &str) -> Result<()> {
         );
         return execute_action(app, id, action, Some(feedback)).await;
     }
-    if run.experiment.is_some() {
+    if run.experiment.is_some() || frontier::worldgen::enabled(&run.world) {
         let construction = construct(app, id, &action).await;
         let mut inference_failure = None;
         let failure = match construction {
@@ -1328,7 +1394,10 @@ async fn construct(app: &App, id: &str, action: &Action) -> Result<()> {
             "Construct missing resource",
             json!(&request),
         )?;
-        if request.directive.requirements["functionality"] == "onto.module.v1" {
+        if request.directive.requirements["functionality"] == "onto.module.v1"
+            || request.directive.requirements["functionality"]
+                == frontier::institution_world::FUNCTIONALITY
+        {
             let evidence = json!({"action":action,"action_id":run.actions,"module":request.directive.requirements["module"],"request_id":request.request_id,"requires":[request.directive.target],"dependencies":request.directive.requirements["dependencies"]});
             store.commit(
                 &mut run,
@@ -1339,13 +1408,22 @@ async fn construct(app: &App, id: &str, action: &Action) -> Result<()> {
         }
         request
     };
-    let executable = request.directive.requirements["functionality"] == "onto.module.v1";
-    let system = if executable {
+    let connected = request.directive.requirements["functionality"]
+        == frontier::institution_world::FUNCTIONALITY;
+    let executable =
+        request.directive.requirements["functionality"] == "onto.module.v1" || connected;
+    let ambient =
+        request.directive.requirements["functionality"] == frontier::worldgen::FUNCTIONALITY;
+    let system = if connected {
+        frontier::institution_world::GUIDANCE
+    } else if ambient {
+        frontier::worldgen::GENERATOR
+    } else if executable {
         frontier::institutions::GENERATOR
     } else {
         construction::GENERATOR
     };
-    let repairs = if executable {
+    let repairs = if executable || ambient {
         request.directive.requirements["repair_attempts"]
             .as_u64()
             .unwrap_or(0)
@@ -1361,7 +1439,11 @@ async fn construct(app: &App, id: &str, action: &Action) -> Result<()> {
         let response = infer(app, id, "world", system, input.clone()).await?;
         let validation_started = std::time::Instant::now();
         let validated: Result<_> = async {
-            let proposal: construction::Proposal = if executable {
+            let proposal: construction::Proposal = if connected {
+                frontier::institution_world::proposal(&request, &response)?
+            } else if ambient {
+                frontier::worldgen::proposal(&request, &response)?
+            } else if executable {
                 frontier::institutions::proposal(&request, &response)?
             } else {
                 serde_json::from_str(&response)?
@@ -1542,7 +1624,13 @@ fn inference_request(run: &Run, role: &str, system: &str, input: &Value) -> Resu
             .ok_or_else(|| anyhow::anyhow!("Structured actions require general tools"))?
             .definitions;
         request["response_format"] = action_transport::response_format(definitions)?;
-        let transport = if frontier::story_executor::enabled(&run.world) {
+        let transport = if frontier::story_executor::enabled(&run.world)
+            && !run
+                .world
+                .ontology
+                .as_ref()
+                .is_some_and(|s| s.connected.is_some())
+        {
             action_transport::STORY_INSTRUCTIONS
         } else {
             action_transport::INSTRUCTIONS
@@ -1556,6 +1644,17 @@ fn inference_request(run: &Run, role: &str, system: &str, input: &Value) -> Resu
     }
     if role == "world" && input["directive"]["requirements"]["functionality"] == "onto.module.v1" {
         request["response_format"] = frontier::institutions::response_format();
+    }
+    if role == "world"
+        && input["directive"]["requirements"]["functionality"] == frontier::worldgen::FUNCTIONALITY
+    {
+        request["response_format"] = frontier::worldgen::response_format();
+    }
+    if role == "world"
+        && input["directive"]["requirements"]["functionality"]
+            == frontier::institution_world::FUNCTIONALITY
+    {
+        request["response_format"] = frontier::institution_world::response_format();
     }
     Ok(request)
 }

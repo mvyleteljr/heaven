@@ -34,6 +34,8 @@ pub struct Receipt {
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct State {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub connected: Option<crate::institution_world::Connected>,
     pub definition: Definition,
     pub runtime_sha256: String,
     pub snapshot: Value,
@@ -246,6 +248,7 @@ impl State {
             .map(|shape| shape.project(&definition.actor, &response["snapshot"]))
             .transpose()?;
         Ok(Self {
+            connected: None,
             agent_state,
             definition,
             runtime_sha256,
@@ -265,6 +268,9 @@ impl State {
         body: Option<&str>,
         elapsed: u64,
     ) -> Result<Value> {
+        if self.connected.is_some() {
+            return crate::institution_world::request(self, method, path, body, elapsed);
+        }
         self.request_at(method, path, body, elapsed, ROOT.trim_end_matches('/'))
     }
 
@@ -429,7 +435,7 @@ impl State {
         Ok(result)
     }
 
-    fn accept_snapshot(&mut self, snapshot: &Value) -> Result<()> {
+    pub(crate) fn accept_snapshot(&mut self, snapshot: &Value) -> Result<()> {
         let agent_state = self
             .definition
             .agent_state
@@ -441,7 +447,7 @@ impl State {
         Ok(())
     }
 
-    fn check_protected(&self, snapshot: &Value) -> Result<()> {
+    pub(crate) fn check_protected(&self, snapshot: &Value) -> Result<()> {
         let actual: Vec<_> = snapshot["instances"]
             .as_array()
             .ok_or_else(|| anyhow::anyhow!("Invalid snapshot"))?

@@ -41,6 +41,9 @@ pub fn resolve(run: &Run, action: &Action) -> Result<Resolution> {
     {
         return Ok(Resolution::Denied);
     }
+    if let Some(resolution) = crate::institution_world::resolve(run, action)? {
+        return Ok(resolution);
+    }
     if action.kind == "onto.expand" {
         ensure!(
             crate::story_executor::enabled(&run.world),
@@ -72,6 +75,10 @@ pub fn resolve(run: &Run, action: &Action) -> Result<Resolution> {
             .is_some_and(|p| crate::workspace::path(p).is_err())
     {
         return Ok(Resolution::Denied);
+    }
+    tools::validate_action(action)?;
+    if let Some(resolution) = crate::worldgen::resolve(run, action)? {
+        return Ok(resolution);
     }
     if action.kind != "http.request" {
         return Ok(
@@ -138,6 +145,9 @@ pub fn resolve(run: &Run, action: &Action) -> Result<Resolution> {
     })
 }
 pub fn exists(world: &World, target: &str) -> bool {
+    if crate::worldgen::is_target(target) {
+        return crate::worldgen::exists(world, target);
+    }
     if let Some(state) = &world.ontology
         && let Some(path) = crate::ontology::route(target)
     {
@@ -192,6 +202,10 @@ pub fn context(run: &Run, target: &str) -> Result<Value> {
 }
 pub fn publish(world: &mut World, request: &Request, resource: &Resource) -> Result<()> {
     match resource.functionality.as_str() {
+        crate::institution_world::FUNCTIONALITY => {
+            crate::institution_world::publish(world, request, resource)
+        }
+        crate::worldgen::FUNCTIONALITY => crate::worldgen::publish(world, request, resource),
         "onto.module.v1" => crate::institutions::publish(world, request, resource),
         "engine.bellwether-page.v1" => bellwether::publish(world, resource),
         "engine.static-http.v1" => {

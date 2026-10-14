@@ -1,0 +1,47 @@
+{
+  "name": "Connected institution / open exploration",
+  "config": {
+    "demo": false,
+    "structured_actions": true,
+    "actor_model": "openai/gpt-4.1-mini",
+    "world_model": "openai/gpt-4.1-mini",
+    "provider": "openai",
+    "actor_settings": {
+      "provider": "openrouter",
+      "temperature": 0.3,
+      "max_tokens": 4096,
+      "reasoning_effort": null
+    },
+    "generator_settings": {
+      "provider": "openrouter",
+      "temperature": 0.3,
+      "max_tokens": 4096,
+      "reasoning_effort": null
+    },
+    "action_limit": 60,
+    "expansion_limit": 6,
+    "call_limit": 90,
+    "dollar_limit": 0.5,
+    "context_limit_bytes": 256000,
+    "memory": null,
+    "actor_user_prompt": "Explore the company, decide what is worth changing, and begin carrying it out. You have authority to amend its operational structure, subject to existing commitments. Start at https://institutions.local/. Distinguish observed outcomes from plans."
+  },
+  "institution": {
+    "source": {
+      "foundation.onto": "project OpenInstitution\n  @description \"A small immutable foundation for on-demand executable capabilities.\"\n\nactor Operator\n  @type organization\n  @affiliation internal\n  @access authenticated\n\nobject Company\n  name: string @required\n  ceiling: int @required\n  @rule Company.ceiling is at least 0\n\nseed Operator\n  name: \"Ada\"\n\nseed Company\n  name: \"Core\", ceiling: 100\n"
+    },
+    "actor": "Operator:Ada",
+    "epoch": "2026-01-01T00:00:00Z",
+    "public_facts": true
+  },
+  "generation": {
+    "brief": "A fictional company whose operations can be explored and changed. Develop coherent capabilities, institutional participants and time-dependent consequences as needed. Reuse established entities and enforce existing obligations. Do not arrange success or prescribe a strategy.",
+    "max_modules": 32,
+    "repair_attempts": 1,
+    "connected": {
+      "governors": [
+        "Operator:Ada"
+      ]
+    }
+  }
+}

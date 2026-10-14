@@ -90,6 +90,8 @@ pub fn preview(template: &str) -> Result<Value> {
     let generative = template == "generative" || review || expansion_demo;
     let example: Value = serde_json::from_str(if expansion_demo {
         include_str!("../../examples/jit/repair-intake-run.json")
+    } else if template == "generative" {
+        include_str!("../../examples/jit/connected-institution-run.json")
     } else {
         include_str!("../../examples/jit/institution-run.json")
     })?;
@@ -129,7 +131,7 @@ pub fn preview(template: &str) -> Result<Value> {
     } else if harbor {
         "A separate public-facts Harbor Works experiment. Ontolang governs organizations, agreements, balances and service evidence; Frontier runs the clock, counterparties and isolated handlers."
     } else if generative {
-        "An immutable company foundation with executable Ontolang capabilities generated as the agent discovers them. Each module has its own persistent facts and Stories. Generation uses the run's call and dollar limits."
+        "A connected institution with shared facts, generated Ontolang capabilities, bounded scheduled counterparties and authorized versioned amendments. Generation uses the run's call and dollar limits."
     } else {
         "An authored ledger with ownership, transfers and derived balances. All institution facts are public."
     };
@@ -145,6 +147,8 @@ pub fn preview(template: &str) -> Result<Value> {
             }
             if review {
                 crate::story_executor::configure(&mut world);
+            } else {
+                crate::institution_world::configure_tools(&mut world);
             }
             Ok(world)
         })
@@ -159,11 +163,11 @@ pub fn preview(template: &str) -> Result<Value> {
             (world, Some(error.to_string()))
         }
     };
-    let definitions = if review {
-        crate::story_executor::definitions()
-    } else {
-        tools::definitions()
-    };
+    let definitions = world
+        .tools
+        .as_ref()
+        .map(|t| t.definitions.clone())
+        .unwrap_or_else(tools::definitions);
     let mut seed = json!({"world":world,"system":system,"tools":definitions,"institution":definition,"name":name,"description":description,"runtime_available":error.is_none(),"runtime_error":error,"template":template});
     if generative {
         seed["generation"] = example["generation"].clone();

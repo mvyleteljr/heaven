@@ -1,0 +1,46 @@
+{
+  "name": "Relay Works \u00b7 AI-native reorganization",
+  "config": {
+    "demo": false,
+    "structured_actions": true,
+    "actor_model": "openai/gpt-6.1-sol",
+    "world_model": "anthropic/claude-opus-5.5",
+    "provider": "openai",
+    "actor_settings": {
+      "provider": "openrouter",
+      "temperature": null,
+      "max_tokens": 32768,
+      "reasoning_effort": "high"
+    },
+    "generator_settings": {
+      "provider": "openrouter",
+      "temperature": null,
+      "max_tokens": 32768,
+      "reasoning_effort": "high"
+    },
+    "action_limit": 80,
+    "expansion_limit": 12,
+    "call_limit": 120,
+    "dollar_limit": 5.0,
+    "context_limit_bytes": 256000,
+    "memory": {
+      "recent_entries": 12,
+      "max_summary_bytes": 8000
+    },
+    "actor_user_prompt": "You've been hired to make Relay Works, a midsize company coordinating commercial repairs, AI-native. Figure out what needs to change and do it. Start at https://institutions.local/."
+  },
+  "institution": {
+    "source": {
+      "foundation.onto": "project RelayWorks\n  @description \"A midsize company coordinating commercial repairs.\"\n\nactor Operator\n  @type organization\n  @affiliation internal\n  @access authenticated\n\nobject Company\n  name: string @required\n\nseed Operator\n  name: \"Ada\"\n\nseed Company\n  name: \"Relay Works\"\n"
+    },
+    "actor": "Operator:Ada",
+    "epoch": "2026-01-01T00:00:00Z",
+    "public_facts": true
+  },
+  "generation": {
+    "brief": "Relay Works is a midsize company coordinating commercial repairs. Develop the company as it is encountered, with plausible facts and executable operations. Preserve established facts, give actions consequences, and do not arrange the world to make the actor succeed.",
+    "max_modules": 128,
+    "repair_attempts": 2
+  },
+  "template": "generative"
+}

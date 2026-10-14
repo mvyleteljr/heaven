@@ -117,11 +117,31 @@ pub fn direct(run: &Run, action: &Action) -> Result<Decision> {
             basis: basis(run),
             directive: directive.clone(),
             scope: Scope {
-                create: vec![directive.target.clone()],
-                modify: vec![],
+                create: if directive.operation == "create" {
+                    vec![directive.target.clone()]
+                } else {
+                    vec![]
+                },
+                modify: if directive.operation == "revise" {
+                    vec![directive.target.clone()]
+                } else {
+                    vec![]
+                },
             },
             context: Context {
-                committed: experiments::context(run, &directive.target)?,
+                committed: if crate::worldgen::is_target(&directive.target) {
+                    crate::worldgen::context(run, action)?
+                } else {
+                    let mut context = experiments::context(run, &directive.target)?;
+                    if (directive.requirements["functionality"] == "onto.module.v1"
+                        || directive.requirements["functionality"]
+                            == crate::institution_world::FUNCTIONALITY)
+                        && crate::worldgen::enabled(&run.world)
+                    {
+                        context["established_world"] = crate::worldgen::context(run, action)?;
+                    }
+                    context
+                },
                 supporting: json!({}),
             },
             interface: interface.clone(),
@@ -161,12 +181,20 @@ pub fn publish(run: &mut Run, request: &Request, proposal: &Proposal) -> Result<
     let mut candidate: World = run.world.clone();
     for resource in resources {
         ensure!(
-            resource.operation == "create" && request.directive.operation == "create",
+            resource.operation == request.directive.operation
+                && (resource.operation == "create"
+                    || (resource.operation == "revise"
+                        && resource.functionality == crate::institution_world::FUNCTIONALITY)),
             "Unsupported change operation; revisions need an explicit supported directive"
         );
         ensure!(
             resource.target == request.directive.target
-                && request.scope.create.contains(&resource.target),
+                && (if resource.operation == "revise" {
+                    &request.scope.modify
+                } else {
+                    &request.scope.create
+                })
+                .contains(&resource.target),
             "Resource outside construction scope"
         );
         ensure!(

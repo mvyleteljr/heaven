@@ -253,6 +253,21 @@ pub(crate) fn http(status: u16, body: Value) -> Value {
     json!({"status":status,"headers":{"content-type":"application/json"},"body":body,"truncated":truncated})
 }
 pub fn advance_time(world: &mut World, seconds: u64) -> Result<()> {
+    if world
+        .ontology
+        .as_ref()
+        .is_some_and(|s| s.connected.is_some())
+    {
+        let mut candidate = world.clone();
+        let now = candidate.tools.as_ref().unwrap().elapsed_seconds;
+        crate::institution_world::advance(
+            candidate.ontology.as_mut().unwrap(),
+            now.saturating_add(seconds),
+        )?;
+        candidate.tools.as_mut().unwrap().advance(seconds);
+        *world = candidate;
+        return Ok(());
+    }
     if world.harbor_onto {
         let mut candidate = world.clone();
         let target = candidate
@@ -340,6 +355,15 @@ pub fn advance_action_time(world: &mut World, action: &Action) -> Result<()> {
             _ => 60,
         };
     }
+    if let Ok(Call::Wait { seconds }) = &parsed
+        && let Some(next) = world
+            .ontology
+            .as_ref()
+            .and_then(crate::institution_world::next_event)
+    {
+        elapsed =
+            (*seconds).min(next.saturating_sub(world.tools.as_ref().unwrap().elapsed_seconds));
+    }
     advance_time(world, elapsed)?;
     if (world.business.is_some() || world.harbor_onto)
         && world.tools.as_ref().unwrap().elapsed_seconds >= crate::business::HORIZON
@@ -363,6 +387,21 @@ fn execute(world: &mut World, action: &Action, parsed: Call) -> Result<Value> {
                 .any(|d| d["name"] == action.kind),
             "History tools are not enabled for this run"
         );
+    }
+    if crate::worldgen::enabled(world) {
+        if let Call::Search { query } = &parsed {
+            return Ok(crate::worldgen::search(world, query));
+        }
+        if let Call::Http { method, url, .. } = &parsed
+            && method.eq_ignore_ascii_case("GET")
+            && crate::ontology::route(url).is_none()
+            && let Some(r) = crate::worldgen::index(world).get(url)
+        {
+            let body: String = r.body.chars().take(32768).collect();
+            return Ok(
+                json!({"status":r.status,"headers":r.headers,"body":body,"truncated":r.body.chars().count()>32768}),
+            );
+        }
     }
     let state = world.tools.as_mut().unwrap();
     match parsed {

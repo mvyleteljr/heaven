@@ -177,6 +177,7 @@ impl World {
     }
     pub fn flowers() -> Self {
         Self {
+            worldgen: None,
             harbor_onto: false,
             ontology: None,
             business: None,

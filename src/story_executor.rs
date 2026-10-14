@@ -205,6 +205,43 @@ pub fn apply(world: &mut World, action: &Action) -> Result<Value> {
         Call::Inspect { module, .. } | Call::Execute { module, .. } => module.as_deref(),
         Call::Expand { module } => Some(module.as_str()),
     };
+    if root.connected.is_some() {
+        let prefix = module_name
+            .map(|m| format!("/modules/{m}"))
+            .unwrap_or_default();
+        return match &call {
+            Call::Execute {
+                command_id,
+                story,
+                object,
+                about,
+                participants_json,
+                fields_json,
+                ..
+            } => {
+                let mut command = json!({"command_id":command_id,"story":story,"participants":object_json(participants_json)?,"fields":object_json(fields_json)?});
+                if let Some(object) = object {
+                    command["object"] = json!(object);
+                }
+                if let Some(about) = about {
+                    command["about"] = json!(about);
+                }
+                root.request(
+                    "POST",
+                    &format!("{prefix}/commands"),
+                    Some(&command.to_string()),
+                    elapsed,
+                )
+            }
+            Call::Inspect { view, .. } => root.request(
+                "GET",
+                &format!("{prefix}/{}", if view == "overview" { "" } else { view }),
+                None,
+                elapsed,
+            ),
+            Call::Expand { .. } => root.request("GET", &format!("{prefix}/"), None, elapsed),
+        };
+    }
     let available: Vec<_> = root.modules.keys().cloned().collect();
     let generation = root.generation.is_some();
     let state = if let Some(name) = module_name {

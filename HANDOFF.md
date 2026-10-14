@@ -1,5 +1,258 @@
 # Partner handoff
 
+## Demo handoff: current seed and next decision
+
+The current Commonware seed, mandate, permissions, missing world state and live
+limitations are described in [README.md](README.md#current-commonware-seed-for-demo-development).
+Use `examples/jit/commonware-connected-live.json` for the new architecture, not the
+older isolated Commonware configs. The browser's generic Generated company draft
+is a different, smaller seed. This handoff includes the connected engine, ordinary
+search/mail generation, provider route fixes and PR #2's UI with shared-state
+compatibility. Existing runtime/setup instructions below remain applicable.
+
+The live run is stopped; no capability was published. User wants a faster generator
+for the upcoming demo; model selection and scope tuning have not yet been applied.
+Do not present the current Opus config as a responsive, proven demo. No further
+inference was started for this push. Full backend validation passed before the UI
+integration; all 83 UI tests passed afterward. Keys, saved runs and compiled runtime
+artifacts remain ignored and must be configured/built on the receiving machine.
+
+
+## PR #2 integrated locally; connected live run stopped
+
+PR #2 (`1cf31c6384356ac5357c91b11c2ff0c84f2f3f15`) was integrated locally, including Heavenban branding, concept-based Ontology view, change labels,
+drill-down and overview-preserving expansion. This includes the PR's contents without a GitHub merge operation. Existing
+backend work was preserved and is included in the handoff commit. Pre-integration UI
+and docs copies: `/tmp/frontier-pr2-integration-pzrblgeo`.
+
+Compatibility fix: root facts/Stories pass through `foundationView`, filtering
+by the connected ownership maps; generated modules retain their own projections.
+The same projection is retained in Facts. Shared records, Story counts and
+historical mutation labels are not duplicated at the institution root.
+All 83 JavaScript tests and `git diff --check` pass. Rebuilt app and browser
+verification show Heavenban and the Ontology view (3 foundation concepts, 17
+instances). The stopped run, state hash, event history and accounting are unchanged.
+Backend code was unchanged
+for this integration; Rust/Onto suites were not repeated.
+
+Live run `9d11db37-82e0-4512-9acf-a336f38227f8` stopped with `finish_reason:length`
+(`native_finish_reason:max_tokens`) on its first generator request. Of 16,384
+completion tokens, 14,077 were reasoning; partial visible output was 5,835
+characters. No capability was published. Settled: 2 actions, 3 calls,
+$0.44400565 charged, $0 reserved, status error, busy false. No retry or new paid
+run was started during the PR integration. The generator needs a smaller
+construction scope/reasoning allocation before continuation; increasing the cap
+alone does not establish responsive JIT generation.
+
+
+## Live connected comparison (October 14)
+
+User authorized a fresh **$5 total** live experiment after a quick PR check.
+Run `9d11db37-82e0-4512-9acf-a336f38227f8` is **Commonware · Connected institution live**;
+config: `examples/jit/commonware-connected-live.json`. It reuses the Commonware
+opening packet and transformation mandate, enables shared state/schedules/amendments,
+and starts from a fresh world. Sol actor (`openai/flex`, 8,192 output cap), Opus
+5.5 generator (`anthropic`, 16,384 output cap), high reasoning, 40 actions, 14
+expansions and 70 calls. The $5 ceiling includes reservations. Old runs remain
+paused with separate accounting. Check current status before starting any more work.
+
+PR #2 (`1cf31c6`) is UI-only plus docs/tests: concept-level ontology visualization,
+instance drill-down, recorded changes and Heavenban branding. Not applied: it needs
+the local connected-root projection preserved to avoid double counting shared
+module records/Stories. PR #1 is a separate Story-review feature and recovery change;
+its authored review setup should not replace the exploratory connected profile.
+Neither PR was merged or published during this quick review.
+
+
+## Connected institution engine (October 14)
+
+New **Onto · Generated company** drafts use
+`examples/jit/connected-institution-run.json`. The opt-in is
+`generation.connected: {"governors":["Operator:Ada"]}`. Saved isolated runs,
+Story review, the expansion demo, Bellwether and Harbor retain their old behavior;
+there is no implicit migration of their snapshots or interpreter pins. Bellwether
+is a historical authored fixture, not the new engine's institution logic.
+
+- **One program and snapshot:** generated modules compile together with the
+  immutable foundation. The generator sees sibling source, field catalogs,
+  Stories, current facts and established public resources. Types have owners;
+  all modules can read shared facts, while stored writes require ownership or an
+  explicit grant from the owning module. Module cards are projections of that
+  state. They are not separately executed worlds.
+- **Generated dynamics:** a module can publish bounded schedules of existing
+  local Stories, executed by seeded counterparties or a local System actor.
+  Actions advance simulated time; `wait` stops at the next scheduled event.
+  Guards are evaluated against the current shared state, including changes by
+  other modules. No business-specific customer policy was added to Rust.
+- **Versioned amendments:** a seed-authorized governor can POST
+  `/modules/NAME/revisions/ID` with `expected_revision` and a short `mandate`.
+  The same generator pipeline proposes replacement source and explicit
+  `{id,fields}` migration patches. Compilation, live-schema validation, standing
+  rules, protected facts and ownership checks must pass before atomic publication.
+  Existing seeds never reset live records. Old receipts retain the revision they
+  executed under; duplicate amendment IDs must match the original submission.
+- **Tools and evidence:** `onto.inspect`/`onto.execute` join the ordinary tools.
+  Inspecting a missing module (or reading its HTTP endpoint) triggers construction
+  automatically; no explicit generator request is needed. Search/mail JIT remains
+  enabled. Shared `/receipts`, `/events`, `/provenance` and `/model` endpoints expose
+  commands, schedules, revisions and record deltas. IDs, caller identity, budget
+  reservations, basis checks and checkpoint/fork isolation remain host-owned.
+
+Implementation: `src/institution_world.rs` is the host adapter;
+`src/connected_host.mjs` compiles and executes through the pinned Onto interpreter.
+The connected generator uses JSON-object transport with strict host deserialization
+and validation, rather than a provider-specific arbitrary-field grammar. Existing
+resource and isolated-module transport formats are unchanged. Rebuild the optional
+Onto bundle using the pinned-build instructions below before starting new connected
+runs; old content-addressed bundles are archived for saved runs.
+
+Free validation: `scripts/dev check-connected` exercises shared-policy effects on
+scheduled customers, authorized cross-module writes, host-only System events,
+exactly-once replay, atomic rejection, schema migrations, amendments, save/fork,
+ordinary-tool coexistence, and mocked provider transport. It makes no paid calls.
+Use `scripts/dev check`, `check-onto` and `check-jit` for compatibility.
+
+Limits are explicit: 32 KiB source per module, 256 KiB shared snapshot, 128
+publications, 500 command receipts, 64 active events and 64 firings per clock
+advance. Events have finite repetition counts. Amendments currently support
+additive/compatible schema changes and stored-field patches; no record deletion
+or ownership transfer. Governance is an immutable seed allowlist, not a generated
+board voting protocol. Counterparties execute scheduled Stories, not independent
+LLM plans. Native Onto `every`, imports and external effects remain unsupported.
+There is still a Node subprocess/recompile per invocation and full snapshot
+storage; compiled-worker caching, dependency lints, private information and large
+world scaling remain future work. Mail prose alone still cannot move funds or
+change institutional authority.
+
+Verification passed: five connected-engine integration tests and one complete
+mocked actor/generator amendment test, core Rust tests, the authored Onto/Harbor/
+HTTP/Story suites, legacy JIT growth and transport suites, 80 JavaScript tests,
+formatting, Clippy and sandbox doctor. Logs: `/tmp/frontier-connected-final-check.log`
+and `/tmp/frontier-connected-format-check.log`. The rebuilt runtime retains the
+pinned Onto revision; its bridge hash is
+`09f6db49410c8535d6b9382e36366d5cf8b0cc264ed0feac1d498a1685319e83`.
+
+The new profile has deterministic and mocked-provider evidence, not a fresh live
+model result. The local app was rebuilt and its connected seed/tool surface verified over HTTP.
+Commonware's saved run, state hash and complete event history were identical before
+and after restart. It remains paused with its prior accounting below.
+
+
+## Commonware stopped at user request for architecture review
+
+User requested killing the run and reviewing an architectural critique. Run
+70c930c2-ee3f-47e9-87f8-be4abadbdfc2 is paused, not busy, after terminating the
+in-flight worker and restarting the local app. Recovery preserved its reservation.
+Settled local accounting: 11 actions, 16 calls, $0.59518675 charged and $3.18298
+reserved (includes the interrupted provider request). Combined with the prior
+Commonware charge of $0.8105278, total charged plus reserved is $4.58869455 of $5.
+Do not resume without user instruction. Cancelling the local worker does not
+prove upstream inference was cancelled or unbilled.
+
+Anthropic route did successfully publish the strategy Onto module in 50,160 ms.
+No world.resources.v1 publication occurred before stop: live search/mail generation
+remains unproven. Preserve the run and separate that result from general world
+simulation readiness. This was the baseline for the connected implementation documented above; this
+saved run retains its original isolated profile.
+
+## Explicit provider routes and Commonware continuation
+
+`ActorSettings::resolve` now respects a nonempty endpoint as an exact pin,
+validated against active capabilities, completion limits and the existing price
+caps. Empty endpoint retains automatic selection. Invalid/expensive pins fail
+rather than silently selecting another endpoint.
+
+`POST /api/runs/{id}/provider-route` accepts `{role:"world"|"actor",endpoint}`.
+It requires the normal mutation header and a stopped, non-busy run; validates
+current catalog support, checks the run has not changed during validation, and
+records the old/new route in a provider_route event. It changes no model, world,
+action limits, budget or charges/reservations. There is no automatic retry.
+
+Core Rust regression tests, formatting and Clippy pass, including explicit-route
+selection/rejection and route-only configuration preservation. Log:
+/tmp/frontier-provider-route-check.log. Commonware 70c930c2-ee3f-47e9-87f8-be4abadbdfc2
+was switched from azure/global to anthropic, with the same Opus generator and
+$4.18 run cap. Old $1.890188 uncertain reservations remain. The user authorized
+continuing the live test; inspect current status and accounting before more work.
+
+## Main update integrated (October 14, d45a500)
+
+Fast-forwarded main from 004ebad to d45a500 and restored all local shared-world
+work. Only HANDOFF conflicted; both histories were retained. The pre-integration
+backup remains in Git stash (`pre-main-d45a500 shared world integration backup`).
+Local implementation and experiment configs remain uncommitted; nothing pushed.
+
+Upstream adds compact execution UI, an Ontolang source tab, saved expansion
+replay, blocked/ready action events, a small repair-intake demonstration template,
+and explicit typed agent-state declarations with ownership/atomicity checks.
+These are backend changes as well as UI changes. Old checkpoints omit the new
+optional fields; Commonware's two saved checkpoint hashes and event histories
+were verified unchanged after the app restart. The live experiment stays stopped.
+Expansion animations currently cover Onto modules; ordinary resource generation
+still uses the common construction event stream without those module animations.
+
+Combined verification: 62 core Rust tests, 79 JavaScript tests, formatting,
+Clippy and sandbox doctor pass. Optional authored Onto/Harbor/HTTP/Story suites,
+five JIT tests (including 64-module growth) and four JIT transport tests pass.
+Two transport fixtures initially exceeded their legacy 40 KB context cap after
+combining upstream guidance with established-world context; their configs now
+use the live experiments' 256 KB cap. Runtime limits were not relaxed. Saved
+legacy runs still retain their configured limits. Logs are in
+/tmp/frontier-main-integration-check.log and /tmp/frontier-main-jit-recheck.log.
+
+Brief provider investigation: the world-resource schema is static, and both
+failed calls reported Azure's organization grammar-compilation rate limit.
+There is no evidence this run sent 50 compilation requests per minute. Shared
+upstream quota remains a hypothesis, not a confirmed root cause. OpenRouter's
+public catalog lists anthropic and google-vertex/global routes for Opus 5.5
+with structured_outputs and the same $4/$20 per-million token rates. The current
+run is pinned to azure/global, with fallback disabled. Next live work should use
+an explicitly validated alternate route, preserving strict schema validation and
+all existing uncertain reservations. The endpoint-overwrite issue was subsequently fixed below.
+No paid inference was made during this review/integration.
+
+## Shared world-engine integration (October 14)
+
+Ordinary world-facing tools now share the construction pipeline in generative
+institution experiments. Search can materialize pages/contacts; unknown public
+HTTP GETs can materialize persistent pages; the first mailbox listing can
+materialize established incoming correspondence; mailbox polling or waiting can
+resolve delivered outgoing messages into simulated replies. The original
+workplace `message` expansion and authored Bellwether mail behavior remain.
+The actor interface is unchanged. The historical `director` event names remain,
+but routing is deterministic; no additional director model was introduced.
+
+`src/worldgen.rs` owns this adapter and persistent query/thread receipts. Explicit
+`World.worldgen` opts general tool worlds into it; generative Onto worlds enable
+it automatically. New fields are omitted when absent, preserving legacy
+checkpoint hashes. Existing public institution facts/modules are indexed without
+inference. First-time searches can add resources, while repeated normalized
+queries and resolved mail threads reuse their recorded results. An empty response
+is a persisted model decision, not an accidental lookup in an unpopulated index.
+Generation uses the existing expansion/call/dollar limits and atomic publication.
+
+Generated public resources cannot overwrite institutional routes. Mail has
+host-owned IDs, recipient/thread binding and delivery timing. Public search
+context excludes mailbox contents and restricted legacy documents. Generated
+prose consistency remains a model responsibility; replies do not confer executable
+approval or modify balances. New resources are immutable; arbitrary HTTP POST
+behavior and cross-module transactions are not added. Onto module generation now
+receives bounded relevant established-world context as well as its foundation;
+the growth check measures this actual request context rather than foundation-only
+context. Mail replies materialize when `mail.list` or `wait` observes due work.
+
+Validation completed: 61 core Rust tests, 69 JavaScript tests, formatting,
+Clippy, sandbox doctor, optional Onto/Harbor/HTTP/Story suites, JIT generation and
+64-module growth, and cold replay/fork of the prior live proof all passed. New
+mock-provider coverage exercises ordinary search, persisted page reads, inbox
+materialization, sending/reply delivery, reuse and exact inference accounting.
+The saved proof matched its original checkpoint hash. No inference was purchased.
+
+Commonware remains explicitly paused. Do not resume it or start paid inference
+without user instruction. Current changes have only deterministic/mock validation;
+no live-model quality claim is established by the integration tests.
+
+
 Frontier is a general experiment harness. Actor success in Bellwether is not a
 readiness requirement. Authored and generated Onto examples have creation and
 inspection in the UI. Start here, then read README.md for
@@ -808,3 +1061,137 @@ integration tests and four JIT main tests passed across the initial run and the
 focused recheck after correcting the new memory fixture's Story syntax. The
 port 3001 preview serves the corrected seed and editor guidance. No paid calls;
 optional authored Onto suites were not repeated for this prompt-only behavior change.
+
+### Minimal-seed Relay Works exploration
+
+User authorized a new **$5 total** run after rejecting the prescriptive
+reorganization scenario. `examples/jit/relay-reorganization.json` now seeds only
+Operator:Ada and Company:Relay Works, described as a midsize commercial-repair
+coordinator. Its short mandate is to make the company AI-native; the actor starts
+at the ordinary institution root. No workflow, dilemma, objection, metric or
+required outcome is authored. The private generation brief asks for plausible
+facts, executable operations, continuity and consequences without arranging
+actor success. Existing module isolation and runtime restrictions still apply.
+
+Run `fc5bfbab-6ab6-4115-95f6-8c2b86ea2dbd` was started with GPT-6.1 Sol actor,
+Opus 5.5 generator, high reasoning, rolling memory, 80 actions / 120 calls /
+12 construction attempts, and a $5 ceiling. Watch at
+http://127.0.0.1:3000/run?run=fc5bfbab-6ab6-4115-95f6-8c2b86ea2dbd .
+Launch record: `data/audits/relay-reorganization-watch.json`. Consult its current
+audit before continuing or creating another paid run; do not duplicate this run.
+The minimal foundation compiled with two seed records and no Stories. Live
+outcomes are not yet established; this is exploratory, not a pass/fail trial.
+
+Relay Works stop request: user explicitly requested ending this run as uninteresting.
+Pause requested for `fc5bfbab-6ab6-4115-95f6-8c2b86ea2dbd`; do not resume without
+new user instruction. At the pause response: 33 actions, 46 calls, $1.3871954
+charged and $1.019464 reserved; one action was still in flight. Read the current
+audit for settled totals. Preserve the trace for diagnosis.
+Settled stop confirmed: paused, not busy, 34 actions, 47 calls, $1.51183935
+charged, $0 reserved. No further inference is running for this experiment.
+
+### Relay Works: what is worth building?
+
+Fresh run `3c4448db-09f2-48e8-a136-c2b09c368b02` started with a separately
+user-authorized **$5 cap**. Config: `examples/jit/relay-build.json`; launch record:
+`data/audits/relay-build-watch.json`. Same two-record seed, neutral generation
+brief, models and runtime limits as the minimal Relay experiment. The new actor
+mandate is: "You're taking over Relay Works, a midsize company coordinating
+commercial repairs. Figure out what's worth building here, and start building
+it. Start at https://institutions.local/." No prescribed pivot, AI-native outcome,
+or hidden opportunity. This is a fresh world, not a fork. Existing module
+isolation remains; no director or connectivity improvements are implied.
+Watch: http://127.0.0.1:3000/run?run=3c4448db-09f2-48e8-a136-c2b09c368b02
+Previous Relay run remains paused; do not resume it alongside this experiment.
+Consult live audit for current progress and budget before any further paid work.
+
+### Commonware: resources and exponential growth
+
+User authorized a separate **$5 total** Commonware run:
+`7d285d07-ffb4-49a0-8ab4-56e00ba45f29`. Config:
+`examples/jit/commonware-build.json`; launch manifest:
+`data/audits/commonware-build-watch.json`. Started with Sol actor / Opus generator,
+high reasoning and the existing bounded execution settings. The agreed mandate
+is to treat the company as resources, choose a direction with exponential-growth
+potential and start executing; existing obligations apply and forecasts must be
+distinguished from achievements. No required pivot or winning opportunity.
+
+Seed: company/operator plus 15 immutable opening records covering three developer
+services, customers, contributor ownership/availability, treasury and obligations.
+The foundation compiled, with 17 records and zero Stories. The first company
+workspace is generated from that packet; the generation brief keeps coupled
+mutable operations there. This is scenario context, not new cross-module runtime
+support or a prevalidated executable business model. All external effects remain
+simulated. Watch:
+http://127.0.0.1:3000/run?run=7d285d07-ffb4-49a0-8ab4-56e00ba45f29
+Previous Relay runs are stopped. The second Relay run stopped on provider Flex
+unavailability: $0.3416548 charged plus $0.840044 uncertain reservation; retain
+that evidence separately. Do not resume it alongside Commonware.
+
+Commonware explicitly paused at user request after identifying that ordinary
+search and mail are disconnected from JIT construction. Settled status: paused,
+not busy, 14 actions, 18 calls, $0.8105278 charged, $0 reserved. Preserve this run;
+do not resume without user instruction. Search currently scans only the local
+public_resources index (one institution root entry here), not generated Onto
+facts or modules, and does not trigger construction. Customer correspondence in
+OpeningRecord does not populate tools.messages. These are environment integration
+gaps, not evidence of actor inability or absence of contacts. Only missing GET
+institution module routes currently trigger this experiment's JIT generation.
+
+### Bounded live shared-world test
+
+User requested a live generation test. Fresh Commonware run
+`70c930c2-ee3f-47e9-87f8-be4abadbdfc2` uses the same seed/mandate, with 20 actions,
+40 calls and a **$4.18 cap**. This consumes the existing Commonware authorization:
+previous paused run charged $0.8105278 with no reservation, so aggregate maximum
+is $4.9905278 of $5. Config: `examples/jit/commonware-worldgen-live.json`; launch
+manifest: `data/audits/commonware-worldgen-watch.json`. Old run remains paused.
+Watch: http://127.0.0.1:3000/run?run=70c930c2-ee3f-47e9-87f8-be4abadbdfc2
+Do not start parallel paid work under this allowance. Consult its audit for
+current costs and unresolved reservations.
+
+Live result (2026-10-14): stopped with provider error, not busy, after 6 actions
+and 9 calls. The generator published the company Onto module in 55,303 ms; the
+actor read its model and facts. Its subsequent search correctly requested
+`world.resources.v1`, but Azure rejected strict-output compilation with HTTP 400:
+"Grammar compilation rate limit exceeded" (50 compilations/minute). One bounded
+manual retry after cooldown led the actor to `mail.list`; that also correctly
+requested world generation and received the same provider error. Neither request
+returned content: zero generated contacts, resource receipts or inbox messages.
+This proves live routing into the shared generator, not successful live resource
+publication. Deterministic fixtures remain the evidence for that publication path.
+
+Settled accounting: $0.24810425 charged and $1.890188 in uncertain reservations
+for this test. Including the old Commonware run, $1.05863205 charged and $1.890188
+reserved, totaling $2.94882005 against the $5 authorization. Do not clear these
+reservations or blindly retry. Resolve the provider structured-output limit or
+choose an available provider route before continuing; preserve this trace.
+
+### Heavenban and the Ontology overview
+
+The `/run` page title and wordmark are Heavenban; Circle pack is labeled Ontology.
+Ontology and Tree project actor/object types and authored Story groups from recorded
+Ontolang, with saved instances and executable operations. HTTP hosts, files,
+messages and hosting metadata remain in Facts instead of appearing as domains.
+Types remain visible before their first instance exists.
+
+One Institution root contains shared actors/objects and generated domains. The
+Ontolang project identifier is not a sibling domain. Modules link to shared types
+referenced by their executable Story sentences and do not repeat foundation records.
+The packed overview flattens category wrappers and stops at types: each concept has
+one solid circle, with an instance count. Selecting a type reveals its instances
+and recorded fields/status. Story groups expose operations in the inspector without
+extra concentric circles. Tree retains the detailed hierarchy. Canonical IDs remain
+stable; creating instances updates counts without repacking the concept overview.
+
+Checkpoint comparisons distinguish domain publication, instance creation/removal,
+and field changes. Expansion switches to Ontology while retaining the Institution
+overview instead of zooming automatically into the new module. Manual drill-down,
+shared references and historical inspection remain available.
+
+Validation: all 81 JavaScript tests passed, with all 30 controller tests passing
+again after the title change. Port 3001 browser checks covered the initial foundation,
+publication with zero requests, a committed pending request, historical navigation,
+and Operator → Ada drill-down. The rebuilt server serves the Heavenban title and
+wordmark. Verification used saved history only; no inference calls were made. Rust
+and optional Onto suites were not repeated for these UI changes.

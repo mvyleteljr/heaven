@@ -57,6 +57,8 @@ pub fn proposal(request: &Request, response: &str) -> Result<crate::construction
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Policy {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub connected: Option<crate::institution_world::Policy>,
     pub brief: String,
     pub max_modules: usize,
     #[serde(default, skip_serializing_if = "is_zero")]
@@ -68,6 +70,12 @@ fn is_zero(value: &u8) -> bool {
 }
 
 pub fn enable(state: &mut State, policy: Policy) -> Result<()> {
+    let mut candidate = state.clone();
+    enable_inner(&mut candidate, policy)?;
+    *state = candidate;
+    Ok(())
+}
+fn enable_inner(state: &mut State, policy: Policy) -> Result<()> {
     ensure!(
         policy.repair_attempts <= 2,
         "At most two validation repairs are allowed"
@@ -105,7 +113,11 @@ pub fn enable(state: &mut State, policy: Policy) -> Result<()> {
     );
     state.protected = protected;
     state.protected_types = protected_types;
+    let connected = policy.connected.is_some();
     state.generation = Some(policy);
+    if connected {
+        crate::institution_world::enable(state)?;
+    }
     Ok(())
 }
 
@@ -115,9 +127,13 @@ pub fn module_path(path: &str) -> Option<(&str, &str)> {
         (
             k,
             match r {
+                "" => "/",
                 "model" => "/model",
                 "facts" => "/facts",
                 "commands" => "/commands",
+                "receipts" => "/receipts",
+                "events" => "/events",
+                "provenance" => "/provenance",
                 _ => "invalid",
             },
         )
@@ -132,6 +148,9 @@ pub fn module_path(path: &str) -> Option<(&str, &str)> {
 }
 
 pub fn exists(state: &State, path: &str) -> bool {
+    if state.connected.is_some() && ["/receipts", "/events", "/provenance"].contains(&path) {
+        return true;
+    }
     if ["/", "/model", "/facts", "/commands"].contains(&path) {
         return true;
     }
@@ -141,6 +160,9 @@ pub fn exists(state: &State, path: &str) -> bool {
 pub fn directive(run: &Run, target: &str) -> Option<Directive> {
     let state = run.world.ontology.as_ref()?;
     let policy = state.generation.as_ref()?;
+    if state.connected.is_some() {
+        return None;
+    }
     let path = ontology::route(target)?;
     let (key, route) = module_path(&path)?;
     if route != "/" || state.modules.contains_key(key) {
@@ -159,6 +181,9 @@ pub fn context(run: &Run) -> Result<Value> {
         .ontology
         .as_ref()
         .ok_or_else(|| anyhow::anyhow!("No institution"))?;
+    if state.connected.is_some() {
+        return Ok(crate::institution_world::context(state));
+    }
     ensure!(
         state.modules.len()
             < state
@@ -251,6 +276,7 @@ pub fn publish(world: &mut World, request: &Request, resource: &Resource) -> Res
     state.modules.insert(
         key.into(),
         State {
+            connected: None,
             definition,
             runtime_sha256: state.runtime_sha256.clone(),
             snapshot: response["snapshot"].clone(),

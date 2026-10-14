@@ -488,3 +488,14 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .
 .agent-state-attributes dl > div { display: flex; flex-wrap: wrap; align-items: baseline; gap: .375rem; min-width: 0; }
 .agent-state-attributes dt { font-size: .625rem; color: var(--secondary); }
 .agent-state-attributes dd { margin: 0; font-size: .75rem; overflow-wrap: anywhere; }
+
+/* Ontology distinguishes definitions, executable Stories and saved instances. */
+.pack-circle.kind-story { fill: #e4ddeb; stroke: #a695ae; }
+.pack-circle.kind-instance { fill: #fffdf7; stroke: #78917e; stroke-width: 1.5; }
+.pack-circle.kind-actor, .pack-circle.kind-object { fill: #f6f3e9; }
+.pack-detail { fill: var(--secondary); paint-order: stroke; stroke: #faf7ee; stroke-width: 2px; }
+.ontology-changes { padding: 0.75rem 1rem !important; margin: 1rem 0 0; list-style: none; background: #edf1e6; border-left: 2px solid #809583; border-radius: 0.5rem; font-size: 0.875rem; }
+.ontology-changes li + li { margin-top: 0.375rem; }
+.concept-references { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.375rem; font-size: 0.8125rem; color: var(--secondary); margin: 0.5rem 0; }
+.concept-references button, .pack-children .concept-references button { width: auto; display: inline; padding: 0; border: 0; text-decoration: underline; }
+.pack-children small { white-space: normal; text-align: right; }

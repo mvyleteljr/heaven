@@ -1,11 +1,13 @@
 // Trusted host bridge. Only explicit facts and source cross this boundary.
 import {readFileSync} from 'node:fs';
+import {connected} from './connected_host.mjs';
 import {isDeepStrictEqual} from 'node:util';
 import {parseProjectFiles, printProject} from '@trigramco/ontolang';
 import {compileModel, initializeWorld, executeStory, tick} from '@trigramco/ontolang-runtime';
 
 try {
   const request=JSON.parse(readFileSync(0,'utf8'));
+  if (request.operation === 'connected') { process.stdout.write(JSON.stringify(connected(request))); process.exit(0); }
   const project=parseProjectFiles('frontier-institution',request.source);
   const model=compileModel(project);
   const now=new Date(Date.parse(request.epoch)+request.elapsed_seconds*1000).toISOString().slice(0,19);

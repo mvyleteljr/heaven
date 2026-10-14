@@ -1,4 +1,4 @@
-import { renderStructure } from "./run-structure.js";
+import { renderStructure, foundationView } from "./run-structure.js";
 // Pure projections of persisted run evidence. This module never starts an action.
 export const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (char) =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
@@ -332,11 +332,11 @@ export function renderWorld(frame, previous, view = "facts", focus = "world") {
   const unchanged = compare && worldSignature(world) === worldSignature(before);
   const domainView = view === "domains" || view === "structure" || view === "tree";
   let body = "";
-  if (domainView) body = renderStructure(world, view, focus);
+  if (domainView) body = renderStructure(world, view, focus, before);
   else {
     if (world.ontology) {
       const modules = entries(world.ontology.modules);
-      body += ontologySection(world.ontology.generation || modules.length ? "Company foundation" : "", world.ontology, before?.ontology, compare);
+      body += ontologySection(world.ontology.generation || modules.length ? "Company foundation" : "", foundationView(world.ontology), foundationView(before?.ontology), compare);
       body += modules.map(([name, state]) => ontologySection(name, state, before?.ontology?.modules?.[name], compare)).join("");
     }
     if (world.business) body += businessSection(world.business, before?.business, compare);
@@ -344,5 +344,5 @@ export function renderWorld(frame, previous, view = "facts", focus = "world") {
     body += resourcesSection(world, before, compare);
     if (!body) body = '<p class="fact-note">World facts will appear here once the experiment loads.</p>';
   }
-  return `<article class="stage-card fact-card"><div class="card-meta"><h2>${domainView ? view === "tree" ? "Tree" : "Circle pack" : "Facts"}</h2><span>${esc(unchanged ? "Facts unchanged" : compare ? `Last change${frame.world_checkpoint ? ` · checkpoint ${frame.world_checkpoint}` : ""}` : "Initial snapshot")}</span></div>${body}</article>`;
+  return `<article class="stage-card fact-card"><div class="card-meta"><h2>${domainView ? view === "tree" ? "Tree" : "Ontology" : "Facts"}</h2><span>${esc(unchanged ? "Facts unchanged" : compare ? `Last change${frame.world_checkpoint ? ` · checkpoint ${frame.world_checkpoint}` : ""}` : "Initial snapshot")}</span></div>${body}</article>`;
 }

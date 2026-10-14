@@ -101,8 +101,7 @@ export function createRunApp(env = globalThis, { createCarousel = createAgentCar
     state.selected = Math.max(0, Math.min(state.selected, state.frames.length - 1));
     renderOptions();
     const config = run?.config || (state.seed && draft ? templateConfig(draft, state.seed) : null);
-    const label = run ? runLabel(run) : draft?.name || "Select an experiment";
-    env.document.title = `${label} · Frontier`;
+    env.document.title = "Heavenban";
     $("experiment").disabled = state.pending || state.loading;
     const reason = blocker();
     const running = run?.status === "running";
@@ -141,7 +140,7 @@ export function createRunApp(env = globalThis, { createCarousel = createAgentCar
       focusedWorkflow = `${state.selection}:${frame.event.seq}`;
       if (["blocked", "ready"].includes(frame.workflow.phase)) {
         state.view = "domains";
-        state.worldFocus = frame.workflow.phase === "ready" ? `world/${encodeURIComponent(`module:${frame.workflow.module}`)}` : "world";
+        state.worldFocus = "world";
       }
     }
     $("position").textContent = frame ? `${run ? "Checkpoint" : "Preview"} ${state.selected + 1}${run ? ` of ${state.frames.length} · ${state.presenting ? "replaying recorded updates" : state.follow ? "following latest" : "viewing history"}` : " · run or step to begin"}` : "No execution selected";

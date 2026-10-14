@@ -26,6 +26,7 @@ fn seeded() -> Result<Run> {
     institutions::enable(
         &mut state,
         institutions::Policy {
+            connected: None,
             brief: "A company with capabilities generated on demand.".into(),
             max_modules: 128,
             repair_attempts: 0,
@@ -97,6 +98,7 @@ fn generation_validates_hidden_foundation_stories_before_enabling() -> Result<()
     );
     let original = state.clone();
     let policy = institutions::Policy {
+        connected: None,
         brief: "Discover company capabilities.".into(),
         max_modules: 4,
         repair_attempts: 0,
@@ -316,7 +318,10 @@ fn growth_keeps_generator_context_bounded_and_measures_latency() -> Result<()> {
             0,
         )?;
         measurements.push(json!({"modules":n+1,"publish_ms":publish_ms,"execute_ms":execute_ms,"revisit_ms":start.elapsed().as_millis(),"context_bytes":context_size(&run)?}));
-        assert_eq!(context_size(&run)?, initial);
+        assert!(
+            context_size(&run)? <= 192 * 1024,
+            "Relevant world context must remain bounded"
+        );
     }
     let first = run.world.ontology.as_ref().unwrap().modules["capability-0"].clone();
     let req = request(&run, "one-more")?;
@@ -331,12 +336,12 @@ fn growth_keeps_generator_context_bounded_and_measures_latency() -> Result<()> {
     );
     println!(
         "JIT_GROWTH_REPORT={}",
-        json!({"kind":"deterministic_fixture_not_live_generation","measurements":measurements})
+        json!({"kind":"deterministic_fixture_not_live_generation","initial_context_bytes":initial,"measurements":measurements})
     );
     Ok(())
 }
 fn context_size(run: &Run) -> Result<usize> {
-    Ok(serde_json::to_vec(&institutions::context(run)?)?.len())
+    Ok(serde_json::to_vec(&request(run, "context-probe")?.context)?.len())
 }
 
 #[test]

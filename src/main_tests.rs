@@ -1045,6 +1045,8 @@ async fn jit_actor_director_generator_execution_records_one_publication_and_reus
 {
     let (mut app, mut run) = app(Config {
         demo: false,
+        // Match live JIT configs: authoring guidance plus established world context.
+        context_limit_bytes: 256_000,
         call_limit: 50,
         dollar_limit: 2.0,
         ..Config::default()
@@ -1154,6 +1156,7 @@ async fn jit_validation_repair_is_bounded_atomic_and_never_retries_provider_fail
     for mode in ["repair", "exhaust", "provider", "disabled"] {
         let (mut app, mut run) = app(Config {
             demo: false,
+            context_limit_bytes: 256_000,
             call_limit: 10,
             dollar_limit: 2.0,
             ..Config::default()
@@ -1273,5 +1276,244 @@ fn memory_retains_reasoning_output_allowance() -> Result<()> {
     assert_eq!(request["max_tokens"], 32768);
     assert_eq!(request["reasoning"]["effort"], "high");
     assert_eq!(request["response_format"], memory::response_format());
+    Ok(())
+}
+
+#[tokio::test]
+async fn ordinary_tools_share_persistent_world_generation_and_cost_accounting() -> Result<()> {
+    let (mut app, mut run) = app(Config {
+        demo: false,
+        structured_actions: true,
+        dollar_limit: 5.0,
+        action_limit: 20,
+        call_limit: 30,
+        expansion_limit: 8,
+        actor_settings: Some(frontier::ActorSettings {
+            provider: "openrouter".into(),
+            temperature: None,
+            max_tokens: 4096,
+            reasoning_effort: None,
+            endpoint: "mock".into(),
+        }),
+        ..Config::default()
+    })?;
+    run.world.tools = Some(tools::State::empty());
+    run.world.worldgen = Some(frontier::worldgen::State {
+        brief: "A fictional workplace; Maya maintains the service.".into(),
+        ..Default::default()
+    });
+    // No institution and no special experiment adapter are required.
+    run.world.documents.clear();
+    app.store
+        .lock()
+        .unwrap()
+        .commit(&mut run, "seed", "world tools", json!({}))?;
+    let actions = vec![
+        json!({"kind":"search","inputs":{"query":"Maya contact"}}),
+        json!({"kind":"http.request","inputs":{"method":"GET","url":"https://work.local/team"}}),
+        json!({"kind":"mail.list","inputs":{}}),
+        json!({"kind":"mail.send","inputs":{"to":"maya@work.local","subject":"Question","body":"What is blocked?","reply_to":"mail-1"}}),
+        json!({"kind":"wait","inputs":{"seconds":60}}),
+        json!({"kind":"mail.read","inputs":{"message_id":"mail-3"}}),
+        json!({"kind":"search","inputs":{"query":"Maya contact"}}),
+        json!({"kind":"finish","inputs":{"message":"Maya reports an unresolved validation issue."}}),
+    ];
+    let count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let worlds = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let (c, w) = (count.clone(), worlds.clone());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    app.inference_url = format!("http://{}/completion", listener.local_addr()?);
+    let router=Router::new().route("/completion",post(move |Json(request):Json<Value>| {
+        let (c,w,actions)=(c.clone(),w.clone(),actions.clone());
+        async move {
+            let output=if request["messages"][0]["content"]==frontier::worldgen::GENERATOR {
+                w.fetch_add(1,Ordering::SeqCst);
+                assert_eq!(request["response_format"]["json_schema"]["name"],"world_resources_v1");
+                let input:Value=serde_json::from_str(request["messages"][1]["content"].as_str().unwrap()).unwrap();
+                let mut data=json!({"pages":[],"contacts":[],"messages":[],"result_urls":[]});
+                match input["directive"]["requirements"]["kind"].as_str().unwrap() {
+                    "search"=>{
+                        data["contacts"]=json!([{"name":"Maya","email":"maya@work.local","description":"Maintainer"}]);
+                        data["pages"]=json!([{"url":"https://work.local/team","title":"Team","body":"Maya: maya@work.local","status":200}]);
+                        data["result_urls"]=json!(["https://work.local/team"]);
+                    }
+                    "inbox"=>data["messages"]=json!([{"from":"maya@work.local","subject":"Status","body":"Validation needs attention.","reply_to":null}]),
+                    "reply"=>data["messages"]=json!([{"from":"maya@work.local","subject":"Re: Question","body":"The validation issue remains unresolved.","reply_to":"mail-2"}]),
+                    other=>panic!("Unexpected construction {other}"),
+                }
+                data
+            } else {typed_actor_output(&request,&actions[c.fetch_add(1,Ordering::SeqCst)])};
+            Json(json!({"usage":{"cost":0.001},"choices":[{"finish_reason":"stop","message":{"content":output.to_string()}}]}))
+        }
+    }));
+    let _mock = Mock(tokio::spawn(async move {
+        axum::serve(listener, router).await.unwrap();
+    }));
+    for _ in 0..8 {
+        step(&app, &run.id).await?;
+    }
+    let store = app.store.lock().unwrap();
+    let saved = store.load(&run.id)?;
+    assert_eq!(saved.status, "finished");
+    assert_eq!(saved.calls, 11);
+    assert_eq!(worlds.load(Ordering::SeqCst), 3);
+    assert_eq!(saved.expansions, 3);
+    assert!((saved.charged - 0.011).abs() < 1e-9);
+    assert!(saved.reserved.abs() < 1e-9);
+    assert_eq!(saved.world.transcript[5]["result"]["reply_to"], "mail-2");
+    assert_eq!(
+        saved.world.transcript[0]["result"],
+        saved.world.transcript[6]["result"]
+    );
+    assert_eq!(
+        store
+            .events(&run.id)?
+            .iter()
+            .filter(|e| e.kind == "published")
+            .count(),
+        3
+    );
+    Ok(())
+}
+
+#[test]
+fn provider_route_change_preserves_world_budget_and_reservations() -> Result<()> {
+    let mut run = Run::new(Config {
+        generator_settings: Some(frontier::ActorSettings {
+            provider: "openrouter".into(),
+            temperature: None,
+            max_tokens: 32768,
+            reasoning_effort: Some("high".into()),
+            endpoint: "azure/global".into(),
+        }),
+        ..Config::default()
+    })?;
+    run.status = "error".into();
+    run.charged = 0.25;
+    run.reserved = 1.89;
+    let before = serde_json::to_value(&run)?;
+    let change = ProviderRoute {
+        role: "world".into(),
+        endpoint: "anthropic".into(),
+    };
+    let config = route_config(&run, &change)?;
+    assert_eq!(serde_json::to_value(&run)?, before);
+    let mut expected = serde_json::to_value(&run.config)?;
+    expected["generator_settings"]["endpoint"] = json!("anthropic");
+    assert_eq!(serde_json::to_value(config)?, expected);
+    run.busy = true;
+    assert!(route_config(&run, &change).is_err());
+    run.busy = false;
+    run.status = "running".into();
+    assert!(route_config(&run, &change).is_err());
+    run.status = "paused".into();
+    assert!(
+        route_config(
+            &run,
+            &ProviderRoute {
+                role: "world".into(),
+                endpoint: String::new()
+            }
+        )
+        .is_err()
+    );
+    assert!(
+        route_config(
+            &run,
+            &ProviderRoute {
+                role: "invalid".into(),
+                endpoint: "anthropic".into()
+            }
+        )
+        .is_err()
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "Requires optional Onto bundle; scripts/dev check-connected"]
+async fn connected_transport_publishes_revises_and_retries_original_tools() -> Result<()> {
+    let preview = experiments::institutions::preview("generative")?;
+    assert_eq!(preview["runtime_available"], true);
+    assert!(preview["world"]["ontology"]["connected"].is_object());
+    assert!(
+        preview["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|t| t["name"] == "onto.execute")
+    );
+    let mut config: Config = serde_json::from_value(preview["config"].clone())?;
+    for settings in [&mut config.actor_settings, &mut config.generator_settings] {
+        settings.as_mut().unwrap().endpoint = "mock".into();
+    }
+    let (mut app, mut run) = app(config)?;
+    run.world = serde_json::from_value(preview["world"].clone())?;
+    run.world.goal = "PRIVATE-ACTOR-GOAL-CANARY".into();
+    run.experiment = Some(experiments::Experiment::Institutions);
+    app.store
+        .lock()
+        .unwrap()
+        .commit(&mut run, "seed", "Connected transport test", json!({}))?;
+    let amendment = json!({"expected_revision":1,"mandate":"Add a tightening operation without resetting the current policy."}).to_string();
+    let actions = vec![
+        json!({"kind":"onto.inspect","inputs":{"module":"operations","view":"overview"}}),
+        json!({"kind":"onto.execute","inputs":{"module":"operations","command_id":"expand","story":"Operator expands Policy","object":"Policy:main"}}),
+        json!({"kind":"http.request","inputs":{"method":"POST","url":"https://institutions.local/modules/operations/revisions/change-1","body":amendment}}),
+        json!({"kind":"onto.execute","inputs":{"module":"operations","command_id":"tighten","story":"Operator tightens Policy","object":"Policy:main"}}),
+        json!({"kind":"finish","inputs":{"message":"Recorded amended policy."}}),
+    ];
+    let count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let generated = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let (c, g) = (count.clone(), generated.clone());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    app.inference_url = format!("http://{}/completion", listener.local_addr()?);
+    let router = Router::new().route("/completion",post(move |Json(request):Json<Value>| {
+        let (c,g,actions) = (c.clone(),g.clone(),actions.clone());
+        async move {
+            let output = if request["messages"][0]["content"]==frontier::institution_world::GUIDANCE {
+                let input:Value=serde_json::from_str(request["messages"][1]["content"].as_str().unwrap()).unwrap();
+                assert!(!input.to_string().contains("PRIVATE-ACTOR-GOAL-CANARY"));
+                assert_eq!(request["response_format"]["type"],"json_object");
+                assert!(input["context"]["committed"]["established_world"].is_object());
+                let n = g.fetch_add(1,Ordering::SeqCst);
+                let mut source = include_str!("../examples/jit/test-capability.onto").to_string();
+                if n==1 {
+                    assert_eq!(input["scope"]["modify"][0],"https://institutions.local/modules/operations/revisions/change-1");
+                    source = source.replace("seed Policy","  Operator tightens Policy\n    sets Policy.limit to 25\n\nseed Policy");
+                }
+                json!({"source":source,"agent_state":{"fields":[]},"grants":{},"events":[],"migration":[],"error":null})
+            } else { typed_actor_output(&request,&actions[c.fetch_add(1,Ordering::SeqCst)]) };
+            Json(json!({"usage":{"cost":0.0001},"choices":[{"finish_reason":"stop","message":{"content":output.to_string()}}]}))
+        }
+    }));
+    let _mock = Mock(tokio::spawn(async move {
+        axum::serve(listener, router).await.unwrap();
+    }));
+    for _ in 0..5 {
+        step(&app, &run.id).await?;
+    }
+    let store = app.store.lock().unwrap();
+    let saved = store.load(&run.id)?;
+    assert_eq!(saved.status, "finished");
+    assert_eq!(generated.load(Ordering::SeqCst), 2);
+    assert_eq!(saved.expansions, 2);
+    let state = saved.world.ontology.as_ref().unwrap();
+    assert_eq!(
+        state.connected.as_ref().unwrap().modules["operations"].revision,
+        2
+    );
+    assert!(
+        state.snapshot["instances"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r["id"] == "Policy:main" && r["fields"]["limit"] == 25)
+    );
+    assert_eq!(saved.world.transcript[1]["result"]["committed"], true);
+    assert_eq!(saved.world.transcript[3]["result"]["committed"], true);
+    let audit = frontier::audit::report(&saved, &store.events(&run.id)?);
+    assert_eq!(audit["integrity"]["unresolved_action_attempts"], 0);
+    assert_eq!(audit["integrity"]["events_contiguous"], true);
     Ok(())
 }

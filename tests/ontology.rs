@@ -362,6 +362,7 @@ fn module_guidance_and_errors_use_the_module_endpoint_and_discovery_is_opt_in() 
         assert!(error.contains(&expected), "{error}");
     }
     state.generation = Some(frontier::institutions::Policy {
+        connected: None,
         brief: "private brief".into(),
         max_modules: 2,
         repair_attempts: 0,
