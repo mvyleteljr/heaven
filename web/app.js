@@ -138,6 +138,12 @@ function capabilities() {
 }
 function settingsState() {
   settingIds.forEach((key) => ($("#" + key).disabled = !!id || pending));
+  // Experiment selection navigates to a new draft; it never edits a saved run.
+  $("#experiment").disabled = pending || !!editingPrompt;
+  $("#configure-new").disabled = !id || pending || !!editingPrompt;
+  $("#run-navigation-note").textContent = id
+    ? "Saved settings stay fixed. Choose another experiment or New run to configure a fresh run."
+    : "Choose an experiment, configure it, then Validate & save. Saved run opens a previous run.";
   $("#mode option[value='true']").disabled =
     $("#experiment").value !== "flowers";
   capabilities();
@@ -641,21 +647,39 @@ for (const key of ["system", "task"]) {
   };
   $(`.cancel-prompt[data-prompt="${key}"]`).onclick = close;
 }
+const newRunExperiment = () =>
+  ["records", "recall"].includes($("#experiment").value) ? "bellwether" : $("#experiment").value;
+async function startDraft(experiment) {
+  const previousExperiment = data ? displayedExperiment(data.run) : seedExperiment;
+  try {
+    // Keep the current view intact until the replacement seed loads successfully.
+    await loadSeed(experiment);
+  } catch (e) {
+    $("#experiment").value = previousExperiment;
+    $("#runs").value = id || "";
+    throw e;
+  }
+  id = null;
+  data = null;
+  $("#runs").value = "";
+  $("#run-name").value = "";
+  if (!seed.config) {
+    $("#context-limit").value = 256000;
+    $("#memory-mode").value = "rolling";
+    $("#action-format").value = "structured";
+  }
+  follow = true;
+  $("#settings").open = true;
+  rememberRun();
+  render();
+}
+$("#configure-new").onclick = () => act(() => startDraft(newRunExperiment()));
 $("#runs").onchange = () =>
   act(async () => {
-    id = $("#runs").value || null;
+    const next = $("#runs").value;
+    if (!next) return startDraft(newRunExperiment());
+    id = next;
     data = null;
-    if (!id) {
-      $("#run-name").value = "";
-      $("#context-limit").value = 256000;
-      $("#memory-mode").value = "rolling";
-      $("#action-format").value = "structured";
-      await loadSeed(
-        $("#experiment").value === "records"
-          ? "bellwether"
-          : $("#experiment").value,
-      );
-    }
     follow = true;
     $("#settings").open = true;
     rememberRun();
@@ -714,11 +738,7 @@ for (const [field, property] of [["brief", "brief"], ["max-modules", "max_module
       generationPolicy[property] = field === "brief" ? $("#generation-" + field).value : Number($("#generation-" + field).value);
   };
 $("#experiment").onchange = () =>
-  act(async () => {
-    await loadSeed($("#experiment").value);
-    data = null;
-    follow = true;
-  });
+  act(() => startDraft($("#experiment").value));
 await loadSeed("bellwether").catch((e) => {
   error(e);
   throw e;

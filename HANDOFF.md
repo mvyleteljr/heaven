@@ -12,6 +12,10 @@ Harbor templates. The original Rust Harbor remains available. The browser also
 offers **Onto · Generated company** as a separate paused-run template. Module
 guidance points to the selected module's endpoints; authored routes retain their
 corrective feedback and Harbor adapters.
+**Saved run** opens an existing run. **Experiment** can always select a new
+template outside an in-progress UI action; doing so opens an unsaved draft.
+**New run** starts a draft of the currently selected experiment. Saved settings
+remain fixed, and failed template loading preserves the original view.
 
 Structured actor output now uses typed tool arguments. A missing `finish.message`
 or HTTP `method`/`url` cannot satisfy the requested schema. If a provider still

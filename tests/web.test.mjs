@@ -310,7 +310,7 @@ test("model validation errors keep the draft editable and do not create a run", 
   b.element("#institution-source").value = "invalid draft";
   b.element("#institution-source").oninput();
   await b.element("#new").onclick();
-  assert.equal(b.state().id, "");
+  assert.equal(b.state().id, null);
   assert.equal(b.element("#institution-source").value, "invalid draft");
   assert.equal(b.element("#institution-source").readOnly, false);
   assert.equal(b.element("#new").disabled, false);
@@ -428,4 +428,81 @@ test("deep links take precedence and follow run selection without stale reload t
   assert.equal(b.url().searchParams.get("run"), "second");
   await b.select("");
   assert.equal(b.url().searchParams.has("run"), false);
+});
+
+test("choosing another experiment from a saved run opens a draft without mutating the run", async () => {
+  const b = await browser("saved", "?run=saved");
+  const original = structuredClone(b.state().data);
+  assert.equal(b.element("#experiment").disabled, false);
+  assert.equal(b.element("#configure-new").disabled, false);
+  const previousRequests = b.requests.length;
+  b.respond((path) => path === "runs" ? [{id: "saved", flowers: true}]
+    : path.startsWith("runs/") ? original : institutionSeed);
+  await b.experiment("institutions");
+  assert.equal(b.state().id, null);
+  assert.equal(b.state().data, null);
+  assert.equal(b.stored(), "");
+  assert.equal(b.url().searchParams.has("run"), false);
+  assert.equal(b.element("#experiment").value, "institutions");
+  assert.equal(b.element("#step").disabled, true);
+  assert.equal(b.element("#run").disabled, true);
+  assert.equal(b.element("#new").disabled, false);
+  assert.equal(b.element("#institution-source").readOnly, false);
+  assert.ok(b.requests.slice(previousRequests).every(r => !r.options?.method));
+  await b.select("saved");
+  assert.deepEqual(b.state().data, original);
+});
+
+test("failed saved-to-draft navigation preserves saved settings and link", async () => {
+  const b = await browser();
+  const saved = detail("accounts");
+  saved.run.experiment = "institutions";
+  saved.run.world = saved.frames[0].world = {...seed.world, ontology};
+  b.respond((path) => path === "runs" ? [{id: "accounts", experiment: "institutions"}] : saved);
+  await b.select("accounts");
+  b.respond((path) => {
+    if (path.startsWith("institution-seed")) throw Error("Seed temporarily unavailable");
+    return path === "runs" ? [{id: "accounts", experiment: "institutions"}] : saved;
+  });
+  await b.experiment("harbor_onto");
+  assert.equal(b.state().id, "accounts");
+  assert.deepEqual(b.state().data, saved);
+  assert.equal(b.element("#experiment").value, "institutions");
+  assert.equal(b.element("#runs").value, "accounts");
+  assert.equal(b.element("#institution-source").readOnly, true);
+  assert.equal(b.stored(), "accounts");
+  assert.equal(b.url().searchParams.get("run"), "accounts");
+  assert.match(b.element("#error").textContent, /Seed temporarily unavailable/);
+});
+
+test("new draft remains visible when refreshing the saved-run list fails", async () => {
+  const b = await browser("saved");
+  b.respond((path) => {
+    if (path === "runs") throw Error("Saved-run list temporarily unavailable");
+    return institutionSeed;
+  });
+  await b.experiment("institutions");
+  assert.equal(b.state().id, null);
+  assert.equal(b.element("h1").textContent, institutionSeed.name);
+  assert.equal(b.element("#status").textContent, "Not started");
+  assert.equal(b.element("#new").disabled, false);
+  assert.equal(b.element("#step").disabled, true);
+  assert.match(b.element("#error").textContent, /Saved-run list temporarily unavailable/);
+});
+
+test("late saved polling cannot restore a run after New run is chosen", async () => {
+  const b = await browser("saved");
+  const late = deferred();
+  let lists = 0;
+  b.respond((path) => path === "runs" ? (++lists === 1 ? late.promise : [{id: "saved", flowers: true}])
+    : path.startsWith("runs/") ? detail("saved", 10) : seed);
+  const pendingPoll = b.refresh();
+  await b.element("#configure-new").onclick();
+  late.resolve([{id: "saved", flowers: true}]);
+  await pendingPoll;
+  assert.equal(b.state().id, null);
+  assert.equal(b.state().data, null);
+  assert.equal(b.element("#experiment").value, "flowers");
+  assert.equal(b.element("#run-name").value, "");
+  assert.equal(b.element("#new").disabled, false);
 });

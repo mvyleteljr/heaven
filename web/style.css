@@ -397,6 +397,15 @@ input[type="range"] {
   gap: 16px;
   margin-top: 18px;
 }
+.run-navigation {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0.75rem 0;
+}
+.run-navigation button {
+  flex-shrink: 0;
+}
 .model-columns {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
