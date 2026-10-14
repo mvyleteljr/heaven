@@ -6,17 +6,91 @@ the architecture and historical audit results.
 
 ## Run locally
 
-Docker Desktop supplies the Linux VM on macOS. On Linux, use Docker Compose.
+Run all commands below from the root of this checkout.
+
+1. Install and start [Docker Desktop](https://docs.docker.com/get-started/get-docker/).
+   On macOS, it supplies the required Linux VM. On Linux, Docker Desktop or
+   [Docker Engine with the Compose plugin](https://docs.docker.com/engine/install/)
+   works. This setup has been exercised on macOS with Linux containers; Windows
+   setup has not been verified.
+2. Check that `docker info` succeeds and `docker compose version` is available.
+3. Start the application and run the free checks:
 
 ```sh
 scripts/dev up
 scripts/dev check
+scripts/dev demo
 ```
 
-Open http://localhost:3000. A provider key is unnecessary for checks or the
-scripted flower example. For live inference, put `OPENROUTER_API_KEY` in an
-ignored `.env`, then run `scripts/dev up` again. Saved runs live in the Compose
-data volume; credentials and that volume are not part of this commit.
+The first build downloads the container images and Rust dependencies and can
+take several minutes. **No host Rust, Cargo, Node, or separate Linux VM setup is
+needed for this Docker path.** The image supplies the pinned Rust toolchain,
+Node 24, Bubblewrap and BusyBox. The optional Python audit runner and Onto bundle
+builder have their own requirements below; neither is needed for this first run.
+
+Open http://localhost:3000. For a free browser run, choose **Willow & Stem →
+Scripted example → Validate & save → Run**. `scripts/dev check` and
+`scripts/dev demo` make no paid inference calls.
+
+### OpenRouter setup for live runs
+
+Create your own key at [OpenRouter API keys](https://openrouter.ai/settings/keys)
+and ensure the account has credits for the intended run. The key used by the
+previous developer is not committed and will not arrive when you pull.
+
+```sh
+test -f .env || cp .env.example .env
+# Edit .env locally and set OPENROUTER_API_KEY to your key.
+scripts/dev up
+curl --fail http://localhost:3000/api/health
+```
+
+The health response should include `"ok":true` and `"key_available":true`.
+That confirms configuration, not provider credit availability. Keep the key in
+the ignored `.env` or your secret manager; do not paste it into an agent chat.
+Restart with `scripts/dev up` after changing it. Live run budgets are saved in
+each run's configuration; agree on a spending limit before starting paid work.
+
+Saved runs live in the Compose `data` volume, independently of the checkout's
+ignored `data/` directory. Neither credentials nor existing run databases arrive
+with the commit. `scripts/dev down` preserves runs; `docker compose down -v`
+deletes the volumes.
+
+### Troubleshooting and day-to-day use
+
+- Docker unavailable: start Docker Desktop and wait until `docker info` works.
+- Port 3000 occupied: use `PORT=3001 scripts/dev up`, then open localhost:3001.
+- Build/startup failure: inspect `scripts/dev logs` and run `scripts/dev doctor`.
+  The doctor checks the real Linux sandbox; native macOS execution cannot replace it.
+- After source edits: rerun `scripts/dev up` to rebuild and restart.
+- Key still unavailable: check the spelling in `.env` and restart; an exported
+  shell `OPENROUTER_API_KEY` takes precedence over Compose's `.env` value.
+- Optional Onto bundle missing: ordinary experiments and core checks still work;
+  follow the optional component instructions only when using institutions.
+
+### Optional native Rust development
+
+Install Rust and Cargo with the official [rustup installer](https://rustup.rs/).
+`rust-toolchain.toml` selects Rust **1.99.0** with rustfmt and Clippy when you run
+Cargo from this checkout. You can explicitly install the matching toolchain:
+
+```sh
+rustup toolchain install 1.99.0 --component rustfmt --component clippy
+```
+
+Native execution of actor tools requires Linux, Bubblewrap and static BusyBox.
+See [Native Linux / Amp orb in README.md](README.md#native-linux--amp-orb) for
+system packages and commands. Native Cargo does not automatically load `.env`;
+provide `OPENROUTER_API_KEY` through the process environment for live inference.
+On macOS, use Docker for execution even if host Rust is installed for editing.
+
+### Starting with a coding agent
+
+The root `AGENTS.md` points agents to this handoff. A sufficient starting prompt is:
+
+> Read AGENTS.md and HANDOFF.md. Get the project running through Docker and run
+> the free checks and demo. Tell me about any missing prerequisites. We can
+> configure a private OpenRouter key and a live inference budget afterward.
 
 ## Implemented
 
@@ -47,6 +121,9 @@ Recorded charges were about $0.08, plus $0.30 in uncertain reservations. See
 The new general suite has **not been run live** in this handoff. Its configuration
 and runner are committed; it covers full-history and rolling-memory handoff
 conditions, dependent records construction, and flower resource reuse:
+
+This command uses host [Python 3](https://www.python.org/downloads/) and only its
+standard library; there is no pip install step. Keep the local server running.
 
 ```sh
 python3 scripts/audit.py examples/audits/general.json \
