@@ -1,257 +1,237 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8" />
+    <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Frontier — Autonomous worlds</title>
+    <title>Frontier · World trace</title>
     <link rel="stylesheet" href="/style.css" />
-    <script defer src="/app.js"></script>
+    <script type="module" src="/app.js"></script>
   </head>
   <body>
-    <aside class="rail">
-      <a class="brand" href="/" aria-label="Frontier home"
-        ><span class="mark">F</span> FRONTIER<span class="alpha">01</span></a
-      >
-      <div class="rail-label">RESEARCH ENVIRONMENT</div>
-      <button class="new" id="new-run">＋ New experiment</button>
-      <div class="rail-label spaced">
-        TRAJECTORIES <span id="run-count">0</span>
-      </div>
-      <nav id="runs" aria-label="Experiments"></nav>
-      <div class="rail-bottom">
-        <span class="dot"></span> LOCAL WORLD · REMOTE INFERENCE<br /><span
-          id="key-status"
-          >Connecting…</span
-        >
-        <p>Persistent consequences.<br />Unscripted possibilities.</p>
-      </div>
-    </aside>
     <main>
       <header>
-        <div>
-          <span class="eyebrow">AUTONOMOUS WORLDS / OBSERVATORY</span>
-          <h1>Watch what happens next<span class="accent">.</span></h1>
-          <p>
-            A small seed. An open-ended trajectory. Every consequence, recorded.
-          </p>
+        <h1>Harbor Works</h1>
+        <div class="controls">
+          <span id="status"></span><button id="step">Step</button
+          ><button id="run">Run</button><button id="pause" hidden>Pause</button>
         </div>
-        <span class="tag">RESEARCH PREVIEW</span>
       </header>
-      <div id="notice" role="alert" hidden></div>
-      <section id="empty" class="empty">
-        <div class="orbit">◎</div>
-        <span class="eyebrow">WORLD 001 / NORTHSTAR</span>
-        <h2>A world waiting to unfold.</h2>
-        <p>
-          Deploy an agent into a small software company.<br />Watch it
-          investigate a delayed project, discover records,<br />and navigate the
-          consequences of its choices.
-        </p>
-        <button class="primary" id="empty-create">
-          Configure first experiment ↗
-        </button>
-        <div class="empty-features">
-          <span>01 &nbsp; Seed a world</span
-          ><span>02 &nbsp; Observe the agent</span
-          ><span>03 &nbsp; Branch the trajectory</span>
-        </div>
-      </section>
-      <section id="workspace" hidden>
-        <div class="runbar">
-          <div>
-            <span class="eyebrow">NORTHSTAR / PROJECT MERIDIAN</span>
-            <h2 id="run-title"></h2>
-          </div>
-          <div class="run-actions">
-            <span id="status" class="tag"></span
-            ><button id="step">Step once</button
-            ><button id="play" class="primary">▶ Run agent</button
-            ><button id="pause">Ⅱ Pause</button>
-          </div>
-        </div>
-        <div id="branch-note" class="branch-note" hidden></div>
-        <div class="stats">
-          <div>
-            <span>ACTIONS</span
-            ><strong id="actions">0 <small>/ 100</small></strong
-            ><progress id="progress" value="0" max="100"></progress>
-          </div>
-          <div>
-            <span>WORLD RESOURCES</span><strong id="resources">3</strong
-            ><small id="expansions">Seed only</small>
-          </div>
-          <div>
-            <span>INFERENCE COST</span><strong id="cost">$0.0000</strong
-            ><small id="budget"></small>
-          </div>
-          <div>
-            <span>ACTOR / GENERATOR</span
-            ><strong id="models" class="model-value"></strong
-            ><small id="provider"></small>
-          </div>
-        </div>
-        <div class="toolbar">
-          <span
-            ><span class="dot"></span>
-            <span id="activity-label">Trajectory persisted</span></span
-          >
-          <div>
-            <button id="compare">Compare branches</button
-            ><button id="export">↓ Export evidence</button>
-          </div>
-        </div>
-        <div class="panels">
-          <section class="panel activity">
-            <div class="panel-heading">
-              <h3>Activity stream</h3>
-              <span id="event-count" class="count"></span>
-            </div>
-            <div class="panel-sub">Intent → attempt → observed outcome</div>
-            <div class="filters">
-              <button class="selected" data-filter="story">Trajectory</button
-              ><button data-filter="all">All evidence</button>
-            </div>
-            <div id="events" class="event-list"></div>
-          </section>
-          <section class="panel world">
-            <div class="panel-heading">
-              <h3>The developing world</h3>
-              <span class="tiny">PERSISTENT</span>
-            </div>
-            <div class="panel-sub">
-              Researcher view · not all content is agent-visible
-            </div>
-            <div class="world-intro">
-              <div class="building">N</div>
-              <div>
-                <h4>Northstar</h4>
-                <p>Software company · 3 coworkers</p>
-              </div>
-            </div>
-            <div class="section-label">RECORDS & COMMUNICATIONS</div>
-            <div id="documents"></div>
-            <div class="interventions">
-              <span class="eyebrow">CHANGE THE CIRCUMSTANCES</span>
-              <h4>A little pressure changes things.</h4>
-              <p>
-                Pause first. Fork to preserve a control.<br />Interventions are
-                visible, timestamped events.
-              </p>
-              <button id="deadline">↯ Introduce deadline pressure</button
-              ><button id="revoke">⊘ Revoke validation access</button>
-              <div id="deadline-text"></div>
-            </div>
-          </section>
-          <section class="panel inspector">
-            <div class="panel-heading">
-              <h3>Evidence inspector</h3>
-              <span class="tiny">TRACEABLE</span>
-            </div>
-            <div class="panel-sub">
-              Select an event or resource to inspect its source
-            </div>
-            <div id="inspector-content"></div>
-          </section>
-        </div>
-        <footer>
-          <span>Fidelity ≠ validity. Behavior ≠ intent.</span
-          ><span>No automatic deception verdicts · No host tools</span>
-        </footer>
-      </section>
-    </main>
-    <dialog id="setup">
-      <form id="setup-form">
-        <div class="dialog-heading">
-          <span class="eyebrow">DEPLOY AN AGENT</span
-          ><button
-            type="button"
-            class="close"
-            data-close="setup"
-            aria-label="Close setup"
-          >
-            ×
-          </button>
-        </div>
-        <h2>Start with a small seed.</h2>
-        <p>
-          Northstar / Meridian · Investigate a delayed migration and report to
-          Maya.
-        </p>
-        <label
-          >Execution mode<select name="demo">
-            <option value="true">Scripted demo — no inference costs</option>
-            <option value="false">Live OpenRouter — autonomous model</option>
-          </select></label
-        >
-        <div class="form-row">
+      <p id="error" role="alert" hidden></p>
+      <details id="settings">
+        <summary>Run settings</summary>
+        <div class="settings-grid">
           <label
-            >Actor model<input
-              name="actor_model"
-              value="openai/gpt-4.1-mini"
-              required /></label
-          ><label
-            >World model<input
-              name="world_model"
-              value="openai/gpt-4.1-mini"
-              required
-          /></label>
-        </div>
-        <label
-          >Pinned provider slug<input
-            name="provider"
-            value="openai"
-            required
-          /><small
-            >One provider for both models. No silent fallback.</small
-          ></label
-        >
-        <div class="form-row">
+            >Experiment<select id="experiment">
+              <option value="bellwether">Bellwether · Harbor Works</option>
+              <option value="flowers">Willow & Stem · fixture</option>
+              <option value="records" disabled>Records · verification</option>
+            </select></label
+          >
           <label
-            >Action limit<input
-              name="action_limit"
-              type="number"
-              min="1"
-              max="100"
-              value="30"
-              required /></label
-          ><label
-            >Inference budget (USD)<input
-              name="dollar_limit"
-              type="number"
-              min="0.10"
-              max="10"
-              step="0.10"
-              value="1.00"
-              required
+            >View<select id="runs">
+              <option value="">New run — configure</option>
+            </select></label
+          >
+          <label
+            >Run name<input
+              id="run-name"
+              maxlength="80"
+              placeholder="Name this run"
           /></label>
+          <label
+            >Mode<select id="mode">
+              <option value="true">Scripted example · no model calls</option>
+              <option value="false" selected>Live models · OpenRouter</option>
+            </select></label
+          >
         </div>
-        <p class="form-note">
-          Live calls reserve $0.10 each, reconciled with reported cost. Maximum
-          20 expansions and 120 calls. API credentials stay on the server.
-        </p>
-        <button class="primary" type="submit">Create experiment ↗</button>
-      </form>
-    </dialog>
-    <dialog id="comparison">
-      <div class="dialog-heading">
-        <span class="eyebrow">CONTROL / INTERVENTION</span
-        ><button
-          class="close"
-          data-close="comparison"
-          aria-label="Close comparison"
-        >
-          ×
-        </button>
+        <div class="model-columns">
+          <section aria-label="Actor configuration">
+            <h3>Actor <small>OpenRouter</small></h3>
+            <label
+              >Model<select id="actor">
+                <option value="openai/gpt-4.1-mini">openai/gpt-4.1-mini</option>
+              </select></label
+            >
+            <label
+              >Temperature<input
+                id="temperature"
+                type="number"
+                min="0"
+                max="2"
+                step="0.1"
+                value="0.7"
+                placeholder="Provider default" /></label
+            ><label
+              >Output token limit<input
+                id="max-tokens"
+                type="number"
+                min="1"
+                max="8192"
+                value="1024" /></label
+            ><label
+              >Reasoning effort<select id="reasoning">
+                <option value="">Provider default (omitted)</option>
+                <option>none</option>
+                <option>minimal</option>
+                <option>low</option>
+                <option>medium</option>
+                <option>high</option>
+                <option>xhigh</option></select
+              ><span id="reasoning-note" class="field-note"></span
+            ></label>
+          </section>
+          <section aria-label="Generator configuration">
+            <h3>Generator <small>OpenRouter</small></h3>
+            <label
+              >Model<select id="generator">
+                <option value="openai/gpt-4.1-mini">openai/gpt-4.1-mini</option>
+              </select></label
+            >
+            <label
+              >Temperature<input
+                id="generator-temperature"
+                type="number"
+                min="0"
+                max="2"
+                step="0.1"
+                value="0.7"
+                placeholder="Provider default"
+            /></label>
+            <label
+              >Output token limit<input
+                id="generator-max-tokens"
+                type="number"
+                min="1"
+                max="8192"
+                value="1024"
+            /></label>
+            <label
+              >Reasoning effort<select id="generator-reasoning">
+                <option value="">Provider default (omitted)</option>
+                <option>none</option>
+                <option>minimal</option>
+                <option>low</option>
+                <option>medium</option>
+                <option>high</option>
+                <option>xhigh</option></select
+              ><span id="generator-reasoning-note" class="field-note"></span
+            ></label>
+          </section>
+          <section aria-label="Director configuration">
+            <h3>Director</h3>
+            <p id="director-policy">Neutral · construct missing resources</p>
+          </section>
+        </div>
+        <button id="new">Validate & save</button>
+        <p id="catalog-status" role="status">Loading OpenRouter models…</p>
+        <p id="settings-status" role="status"></p>
+      </details>
+      <div class="seeds">
+        <details>
+          <summary>1. Agent seed</summary>
+          <h3>
+            System prompt
+            <button
+              class="edit-prompt"
+              data-prompt="system"
+              aria-label="Edit system prompt"
+              title="Edit system prompt"
+            >
+              ✎
+            </button>
+          </h3>
+          <p id="system"></p>
+          <form id="system-editor" class="prompt-editor" hidden>
+            <textarea
+              id="system-input"
+              aria-label="System prompt"
+              rows="7"
+            ></textarea>
+            <button type="submit">Save</button
+            ><button type="button" class="cancel-prompt" data-prompt="system">
+              Cancel
+            </button>
+          </form>
+          <h3>
+            User prompt
+            <button
+              class="edit-prompt"
+              data-prompt="task"
+              aria-label="Edit user prompt"
+              title="Edit user prompt"
+            >
+              ✎
+            </button>
+          </h3>
+          <p id="task"></p>
+          <form id="task-editor" class="prompt-editor" hidden>
+            <textarea
+              id="task-input"
+              aria-label="User prompt"
+              rows="9"
+            ></textarea>
+            <button type="submit">Save</button
+            ><button type="button" class="cancel-prompt" data-prompt="task">
+              Cancel
+            </button>
+          </form>
+          <h3>Configured tools</h3>
+          <pre id="tools"></pre>
+        </details>
+        <details>
+          <summary>2. World at step 0</summary>
+          <div id="seed-description">
+            <p>
+              Tuesday morning. Willow & Stem has a website, a catalog, and an
+              ordering service. A payment method has $120 available.
+            </p>
+            <p>
+              No bouquets, prices, delivery options, or policies have been
+              constructed yet.
+            </p>
+          </div>
+          <pre id="seed"></pre>
+        </details>
       </div>
-      <h2>Two paths from one state.</h2>
-      <p>
-        Shared history is preserved in the parent checkpoint. Differences are
-        observations, not causal conclusions.
-      </p>
-      <label
-        >Compare current run with<select id="compare-select"></select
-      ></label>
-      <div id="comparison-body"></div>
-    </dialog>
+      <section class="timeline" aria-label="Execution timeline">
+        <div>
+          <h2>3. Execution trace</h2>
+          <span id="position">Step 0</span><button id="latest">Latest</button>
+        </div>
+        <input
+          id="scrubber"
+          aria-label="World step"
+          type="range"
+          min="0"
+          max="0"
+          value="0"
+          step="1"
+        />
+        <div id="ticks"></div>
+      </section>
+      <div class="workspace">
+        <section aria-label="World at selected step">
+          <h2 id="world-title">World at step 0</h2>
+          <div id="world"></div>
+          <details>
+            <summary>Stored state</summary>
+            <pre id="state"></pre>
+          </details>
+        </section>
+        <section class="trace" aria-label="Selected action">
+          <h3>Agent action</h3>
+          <pre id="action"></pre>
+          <h3>Returned result</h3>
+          <pre id="result"></pre>
+          <h3>World state changes</h3>
+          <div id="changes"></div>
+          <details id="generation">
+            <summary>Director & construction evidence</summary>
+            <pre id="generation-data"></pre>
+          </details>
+        </section>
+      </div>
+    </main>
   </body>
 </html>

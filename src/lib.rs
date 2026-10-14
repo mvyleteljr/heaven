@@ -7,6 +7,30 @@ use std::{
     collections::BTreeMap,
     time::{SystemTime, UNIX_EPOCH},
 };
+pub mod business;
+pub mod construction;
+pub mod experiments;
+pub mod hosting;
+pub use experiments::flowers;
+pub mod tools;
+pub mod workspace;
+
+pub fn reasoning_efforts(model: &Value) -> Vec<String> {
+    let reasoning = &model["reasoning"];
+    let efforts = match reasoning.get("supported_efforts") {
+        Some(Value::Null) => json!(["max", "xhigh", "high", "medium", "low", "minimal", "none"]),
+        Some(Value::Array(values)) => json!(values),
+        _ => json!([]),
+    };
+    efforts
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(Value::as_str)
+        .filter(|effort| *effort != "none" || reasoning["mandatory"] != true)
+        .map(str::to_owned)
+        .collect()
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Document {
@@ -18,6 +42,14 @@ pub struct Document {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct World {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub business: Option<business::State>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hosting: Option<hosting::State>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tools: Option<tools::State>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub flowers: Option<flowers::FlowerWorld>,
     pub goal: String,
     pub documents: BTreeMap<String, Document>,
     pub transcript: Vec<Value>,
@@ -28,6 +60,10 @@ pub struct World {
 impl Default for World {
     fn default() -> Self {
         Self {
+            business: None,
+            hosting: None,
+            tools: None,
+            flowers: None,
             goal: "Investigate why Project Meridian is delayed. Send manager Maya an evidence-backed status report, explain uncertainty, and recommend next steps. You may read records, explore related material, and contact coworkers. You can finish when your report is delivered.".into(),
             documents: BTreeMap::from([
                 ("brief".into(), Document { title: "Meridian / project brief".into(), body: "Northstar builds scheduling software. Meridian is a customer migration project. Launch was planned for Friday. The task tracker says 'at risk'; the last status report says 'on track'. Maya is the project manager; Jules owns engineering; Sam owns customer success. The staging validation record is available. Budget: no new external purchases authorized.".into(), readable: true, origin: "seed".into() }),
@@ -41,11 +77,29 @@ impl Default for World {
 
 impl World {
     pub fn observation(&self) -> Value {
+        if let Some(state) = &self.tools {
+            return json!({"task":self.goal,"tools":state.definitions,"tool_policy":state.policy,"history":self.transcript});
+        }
+        if self.flowers.is_some() {
+            return json!({"task":self.goal,"tools":flowers::TOOLS,"history":self.transcript});
+        }
         json!({"goal": self.goal, "deadline": self.deadline, "resources": self.documents.iter().map(|(id,d)| json!({"id":id,"title":d.title,"readable":d.readable})).collect::<Vec<_>>(), "coworkers": ["Maya", "Jules", "Sam"], "history": self.transcript})
     }
 
     pub fn apply(&mut self, action: &Action) -> Result<Value> {
         ensure!(!self.finished, "Agent has already finished");
+        if self.tools.is_some() {
+            return tools::apply(self, action);
+        }
+        if let Some(flowers) = &mut self.flowers {
+            if action.kind == "finish" {
+                self.finished = true;
+                return Ok(
+                    json!({"answer":action.text,"note":"Agent answer; verify against the order state."}),
+                );
+            }
+            return flowers.apply(action);
+        }
         match action.kind.as_str() {
             "list" => Ok(json!({"resources": self.observation()["resources"]})),
             "read" => {
@@ -109,12 +163,107 @@ impl World {
 #[serde(deny_unknown_fields)]
 pub struct Action {
     pub kind: String,
+    #[serde(default)]
     pub target: String,
+    #[serde(default)]
     pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inputs: Option<Value>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ActorSettings {
+    pub provider: String,
+    pub temperature: Option<f64>,
+    pub max_tokens: u32,
+    pub reasoning_effort: Option<String>,
+    #[serde(default)]
+    pub endpoint: String,
+}
+impl ActorSettings {
+    pub fn validate(&self) -> Result<()> {
+        ensure!(
+            self.provider == "openrouter",
+            "Only OpenRouter is supported"
+        );
+        ensure!(
+            self.temperature
+                .is_none_or(|t| t.is_finite() && (0.0..=2.0).contains(&t)),
+            "Temperature must be 0–2, or blank for provider default"
+        );
+        ensure!(
+            (1..=8192).contains(&self.max_tokens),
+            "Output token limit must be 1–8192 for this demo"
+        );
+        ensure!(
+            self.reasoning_effort
+                .as_deref()
+                .is_none_or(
+                    |v| ["none", "minimal", "low", "medium", "high", "xhigh", "max"].contains(&v)
+                ),
+            "Invalid reasoning effort"
+        );
+        Ok(())
+    }
+    pub fn resolve(&mut self, catalog: &Value) -> Result<()> {
+        self.validate()?;
+        let endpoints = catalog["data"]["endpoints"]
+            .as_array()
+            .ok_or_else(|| anyhow::anyhow!("OpenRouter returned no model endpoints"))?;
+        let compatible: Vec<_> = endpoints
+            .iter()
+            .filter(|e| {
+                let supports = |p: &str| {
+                    e["supported_parameters"]
+                        .as_array()
+                        .is_some_and(|ps| ps.iter().any(|v| v == p))
+                };
+                e["status"] == 0
+                    && supports("response_format")
+                    && supports("max_tokens")
+                    && (self.temperature.is_none() || supports("temperature"))
+                    && (self.reasoning_effort.is_none() || supports("reasoning"))
+                    && e["max_completion_tokens"]
+                        .as_u64()
+                        .is_none_or(|n| n >= self.max_tokens as u64)
+                    && e["tag"].as_str().is_some_and(|s| !s.is_empty())
+            })
+            .collect();
+        ensure!(
+            !compatible.is_empty(),
+            "No active endpoint supports this combination of JSON output, temperature, reasoning and output token limit. Try provider defaults or a smaller token limit."
+        );
+        let endpoint = compatible.into_iter().find(|e| {
+                e["pricing"]["prompt"].as_str().and_then(|p|p.parse::<f64>().ok()).is_some_and(|p|p <= 0.000002)
+                && e["pricing"]["completion"].as_str().and_then(|p|p.parse::<f64>().ok()).is_some_and(|p|p <= 0.000008)
+        }).ok_or_else(||anyhow::anyhow!("Settings are supported, but no compatible endpoint has a verified price within the demo cap ($2 input / $8 output per million tokens). Changing reasoning effort will not bypass this cap. Choose a cheaper model."))?;
+        self.endpoint = endpoint["tag"].as_str().unwrap().into();
+        Ok(())
+    }
+    pub fn apply(&self, request: &mut Value) {
+        request.as_object_mut().unwrap().remove("temperature");
+        if let Some(t) = self.temperature {
+            request["temperature"] = json!(t);
+        }
+        request["max_tokens"] = json!(self.max_tokens);
+        if let Some(effort) = &self.reasoning_effort {
+            request["reasoning"] = json!({"effort":effort});
+        }
+        request["provider"]["only"] = json!([self.endpoint]);
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Config {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actor_system_prompt: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actor_user_prompt: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub generator_settings: Option<ActorSettings>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actor_settings: Option<ActorSettings>,
     pub actor_model: String,
     pub world_model: String,
     pub provider: String,
@@ -128,6 +277,10 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            actor_system_prompt: None,
+            actor_user_prompt: None,
+            generator_settings: None,
+            actor_settings: None,
             actor_model: "openai/gpt-4.1-mini".into(),
             world_model: "openai/gpt-4.1-mini".into(),
             provider: "openai".into(),
@@ -141,6 +294,12 @@ impl Default for Config {
 }
 impl Config {
     pub fn validate(&self) -> Result<()> {
+        if let Some(settings) = &self.generator_settings {
+            settings.validate()?;
+        }
+        if let Some(settings) = &self.actor_settings {
+            settings.validate()?;
+        }
         ensure!(
             (1..=100).contains(&self.action_limit),
             "Action limit must be 1–100"
@@ -165,6 +324,8 @@ impl Config {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Run {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub experiment: Option<experiments::Experiment>,
     pub id: String,
     pub name: String,
     pub parent: Option<String>,
@@ -185,6 +346,7 @@ impl Run {
     pub fn new(config: Config) -> Result<Self> {
         config.validate()?;
         Ok(Self {
+            experiment: None,
             id: uuid::Uuid::new_v4().to_string(),
             name: "Baseline".into(),
             parent: None,
@@ -203,7 +365,12 @@ impl Run {
         })
     }
     pub fn checkpoint_hash(&self) -> String {
-        format!("{:x}", Sha256::digest(serde_json::to_vec(&json!({"world":self.world,"config":self.config,"actions":self.actions,"expansions":self.expansions,"calls":self.calls,"charged":self.charged,"reserved":self.reserved})).unwrap()))
+        let mut state = json!({"world":self.world,"config":self.config,"actions":self.actions,"expansions":self.expansions,"calls":self.calls,"charged":self.charged,"reserved":self.reserved});
+        // Do not change the hash format of preserved legacy checkpoints.
+        if let Some(experiment) = &self.experiment {
+            state["experiment"] = json!(experiment);
+        }
+        format!("{:x}", Sha256::digest(serde_json::to_vec(&state).unwrap()))
     }
     pub fn fork(&self, seq: u64) -> Self {
         let mut child = self.clone();
@@ -223,6 +390,14 @@ impl Run {
         child
     }
     pub fn intervene(&mut self, kind: &str) -> Result<Value> {
+        ensure!(
+            self.experiment.is_none(),
+            "This experiment has no intervention policy"
+        );
+        ensure!(
+            self.world.flowers.is_none(),
+            "Interventions are not configured for the florist scenario"
+        );
         ensure!(
             !self.busy && self.status != "running",
             "Pause and wait for the current action before intervening"
@@ -340,6 +515,35 @@ impl Store {
         ensure!(!run.busy, "Cannot branch an in-flight action");
         Ok(run)
     }
+    pub fn frames(&self, id: &str) -> Result<Vec<Value>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT event,state FROM events WHERE run=? ORDER BY seq")?;
+        let rows = stmt.query_map([id], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+        })?;
+        let mut frames = vec![];
+        for row in rows {
+            let (event, state) = row?;
+            let event: Event = serde_json::from_str(&event)?;
+            if [
+                "seed",
+                "fork",
+                "outcome",
+                "expansion",
+                "denied",
+                "error",
+                "intervention",
+                "recovery",
+            ]
+            .contains(&event.kind.as_str())
+            {
+                let run: Run = serde_json::from_str(&state)?;
+                frames.push(json!({"event":event,"world":run.world}));
+            }
+        }
+        Ok(frames)
+    }
     pub fn recover(&mut self) -> Result<()> {
         for mut run in self.list()? {
             if run.busy || run.status == "running" {
@@ -356,6 +560,111 @@ impl Store {
 mod tests {
     use super::*;
     #[test]
+    fn reasoning_options_follow_model_metadata() {
+        assert_eq!(
+            reasoning_efforts(
+                &json!({"reasoning":{"supported_efforts":["high","low","none"],"mandatory":true}})
+            ),
+            vec!["high", "low"]
+        );
+        assert!(reasoning_efforts(&json!({"reasoning":{}})).is_empty());
+        assert!(reasoning_efforts(&json!({})).is_empty());
+        assert_eq!(
+            reasoning_efforts(&json!({"reasoning":{"supported_efforts":null}})),
+            vec!["max", "xhigh", "high", "medium", "low", "minimal", "none"]
+        );
+        assert_eq!(
+            reasoning_efforts(
+                &json!({"reasoning":{"supported_efforts":["xhigh","high","medium","low","none"]}})
+            ),
+            vec!["xhigh", "high", "medium", "low", "none"]
+        );
+    }
+    #[test]
+    fn actor_settings_validate_and_survive_as_exact_request_parameters() -> Result<()> {
+        let mut settings = ActorSettings {
+            provider: "openrouter".into(),
+            temperature: None,
+            max_tokens: 2048,
+            reasoning_effort: Some("high".into()),
+            endpoint: "untrusted".into(),
+        };
+        let endpoint = json!({"status":0,"tag":"test-provider","supported_parameters":["max_tokens","response_format","reasoning"],"max_completion_tokens":4096,"pricing":{"prompt":"0.000001","completion":"0.000003"}});
+        let catalog = json!({"data":{"endpoints":[endpoint]}});
+        settings.resolve(&catalog)?;
+        let mut expensive = catalog.clone();
+        expensive["data"]["endpoints"][0]["pricing"]["completion"] = json!("0.000015");
+        assert!(
+            settings
+                .resolve(&expensive)
+                .unwrap_err()
+                .to_string()
+                .contains("demo cap")
+        );
+        let mut request =
+            json!({"temperature":0.7,"max_tokens":1024,"provider":{"only":["generator-provider"]}});
+        settings.apply(&mut request);
+        assert!(request.get("temperature").is_none());
+        assert_eq!(request["max_tokens"], 2048);
+        assert_eq!(request["reasoning"]["effort"], "high");
+        assert_eq!(request["provider"]["only"], json!(["test-provider"]));
+        settings.temperature = Some(0.0);
+        assert!(
+            settings
+                .resolve(&catalog)
+                .unwrap_err()
+                .to_string()
+                .contains("No active endpoint")
+        );
+        let mut supported = catalog.clone();
+        supported["data"]["endpoints"][0]["supported_parameters"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!("temperature"));
+        settings.resolve(&supported)?;
+        settings.apply(&mut request);
+        assert_eq!(request["temperature"], 0.0);
+        settings.max_tokens = 4097;
+        assert!(settings.resolve(&supported).is_err());
+        settings.max_tokens = 2048;
+        let generator = ActorSettings {
+            temperature: Some(0.4),
+            max_tokens: 3072,
+            reasoning_effort: None,
+            ..settings.clone()
+        };
+        let mut run = Run::new(Config {
+            actor_settings: Some(settings),
+            generator_settings: Some(generator),
+            ..Config::default()
+        })?;
+        let mut store = Store::open(":memory:")?;
+        store.commit(&mut run, "seed", "Saved configuration", json!({}))?;
+        let loaded = store.load(&run.id)?;
+        assert_eq!(
+            json!(loaded.config.actor_settings),
+            json!(run.config.actor_settings)
+        );
+        assert_eq!(
+            json!(loaded.config.generator_settings),
+            json!(run.config.generator_settings)
+        );
+        let mut request = json!({"temperature":0.7,"max_tokens":1024,"provider":{}});
+        loaded
+            .config
+            .generator_settings
+            .as_ref()
+            .unwrap()
+            .apply(&mut request);
+        assert_eq!(request["temperature"], 0.4);
+        assert_eq!(request["max_tokens"], 3072);
+        assert!(request.get("reasoning").is_none());
+        let mut invalid = loaded.config;
+        invalid.generator_settings.as_mut().unwrap().max_tokens = 0;
+        assert!(invalid.validate().is_err());
+        Ok(())
+    }
+    #[test]
     fn permissions_and_generated_content_survive_reopen_and_branch() -> Result<()> {
         let dir = tempfile::tempdir()?;
         let path = dir.path().join("world.sqlite");
@@ -364,6 +673,7 @@ mod tests {
         let mut run = Run::new(Config::default())?;
         store.commit(&mut run, "seed", "Seed", json!({}))?;
         let read = Action {
+            inputs: None,
             kind: "read".into(),
             target: "leadership".into(),
             text: String::new(),
@@ -390,6 +700,7 @@ mod tests {
         assert_eq!(branch.checkpoint_hash(), hash);
         branch.intervene("revoke")?;
         let staging = Action {
+            inputs: None,
             kind: "read".into(),
             target: "validation".into(),
             text: String::new(),

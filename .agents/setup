@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
+if ! command -v bwrap >/dev/null || ! dpkg-query -W -f='${Status}' busybox-static 2>/dev/null | grep -q 'install ok installed'; then
+  sudo apt-get update -qq
+  sudo apt-get install -y bubblewrap busybox-static util-linux coreutils
+fi
 if [ ! -x "$HOME/.cargo/bin/rustup" ]; then
   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
 fi

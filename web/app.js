@@ -1,4 +1,3 @@
-"use strict";
 const $ = (s) => document.querySelector(s);
 const esc = (s) =>
   String(s ?? "").replace(
@@ -8,15 +7,20 @@ const esc = (s) =>
         c
       ],
   );
-let current = localStorage.getItem("frontier-run"),
+const pretty = (x) => JSON.stringify(x, null, 2);
+const money = (cents) =>
+  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(
+    cents / 100,
+  );
+let id = localStorage.getItem("flower-run"),
   data = null,
-  runs = [],
-  selected = null,
-  filter = "story",
+  seed,
+  selected = 0,
+  follow = true,
   pending = false;
 async function api(path, body) {
-  const response = await fetch(
-    `/api/${path}`,
+  const r = await fetch(
+    "/api/" + path,
     body === undefined
       ? {}
       : {
@@ -28,24 +32,19 @@ async function api(path, body) {
           body: JSON.stringify(body),
         },
   );
-  const text = await response.text();
-  let value;
-  try {
-    value = JSON.parse(text);
-  } catch {
-    throw Error(`Server returned HTTP ${response.status}`);
-  }
-  if (!response.ok) throw Error(value.error || `HTTP ${response.status}`);
+  const value = await r.json();
+  if (!r.ok) throw Error(value.error);
   return value;
 }
 function error(e) {
-  $("#notice").textContent = e.message;
-  $("#notice").hidden = false;
+  $("#error").textContent = e.message;
+  $("#error").hidden = false;
 }
 async function act(fn) {
   if (pending) return;
   pending = true;
-  $("#notice").hidden = true;
+  settingsState();
+  $("#error").hidden = true;
   try {
     await fn();
     await refresh();
@@ -53,257 +52,467 @@ async function act(fn) {
     error(e);
   } finally {
     pending = false;
+    settingsState();
   }
 }
-function choose(id) {
-  current = id;
-  selected = null;
-  localStorage.setItem("frontier-run", id);
-  return refresh();
-}
-async function refresh() {
-  const requested = current;
-  runs = await api("runs");
-  $("#run-count").textContent = runs.length;
-  $("#runs").innerHTML = runs
-    .map(
-      (r) =>
-        `<button class="run-link ${r.id === current ? "active" : ""}" data-run="${r.id}"><span>${esc(r.name)}</span><small>${r.demo ? "SCRIPTED" : "LIVE"} · ${esc(r.status)} · ${r.id.slice(0, 6)}</small></button>`,
+let models = [];
+let prompts;
+let editingPrompt = null;
+const settingIds = [
+  "experiment",
+  "run-name",
+  "mode",
+  "actor",
+  "temperature",
+  "max-tokens",
+  "reasoning",
+  "generator",
+  "generator-temperature",
+  "generator-max-tokens",
+  "generator-reasoning",
+];
+function capabilities() {
+  for (const [modelId, prefix] of [
+    ["actor", ""],
+    ["generator", "generator-"],
+  ]) {
+    const model = models.find((m) => m.id === $("#" + modelId).value);
+    const efforts = model?.reasoning_efforts || [];
+    const unsupported = model && !efforts.length;
+    const field = $("#" + prefix + "reasoning");
+    const value = field.value;
+    const options = [
+      new Option("Provider default (omitted)", ""),
+      ...efforts.map((effort) => new Option(effort, effort)),
+    ];
+    if (id && value && !efforts.includes(value))
+      options.push(new Option(value + " (saved)", value));
+    if (
+      Array.from(field.options, (o) => o.value).join() !==
+      options.map((o) => o.value).join()
     )
-    .join("");
-  if (!current || !runs.some((r) => r.id === current)) {
-    current = null;
-    $("#empty").hidden = false;
-    $("#workspace").hidden = true;
-    return;
+      field.replaceChildren(...options);
+    field.value = id || efforts.includes(value) ? value : "";
+    field.disabled = !!id || pending || !model || unsupported;
+    $("#" + prefix + "reasoning-note").textContent = unsupported
+      ? model.supported_parameters?.includes("reasoning")
+        ? "Effort selection unavailable"
+        : "Reasoning not supported"
+      : !model
+        ? "Capabilities unavailable"
+        : "";
+    const noTemperature =
+      model && !model.supported_parameters?.includes("temperature");
+    $("#" + prefix + "temperature").disabled =
+      !!id || pending || !!noTemperature;
+    if (!id && model) {
+      if (unsupported) $("#" + prefix + "reasoning").value = "";
+      if (noTemperature) $("#" + prefix + "temperature").value = "";
+    }
   }
-  const next = await api(`runs/${current}`);
-  if (requested !== current) return;
-  if (data?.run.id === next.run.id && data.run.seq === next.run.seq) return;
-  data = next;
-  render();
+}
+function settingsState() {
+  settingIds.forEach((key) => ($("#" + key).disabled = !!id || pending));
+  $("#mode option[value='true']").disabled =
+    $("#experiment").value !== "flowers";
+  capabilities();
+  $("#new").disabled = !!id || pending || !!editingPrompt;
+  $("#runs").disabled = pending || !!editingPrompt;
+  document.querySelectorAll(".edit-prompt").forEach((button) => {
+    button.hidden = !!id;
+    button.disabled = pending || !!editingPrompt;
+  });
+  $("#settings-status").textContent = pending
+    ? "Working…"
+    : id
+      ? "Inspecting saved settings · read-only"
+      : "Configure a new run, then validate & save.";
+}
+function showSettings(config) {
+  const settings = config.actor_settings;
+  const values = {
+    mode: String(config.demo),
+    actor: config.actor_model,
+    generator: config.world_model,
+    "generator-temperature": config.generator_settings
+      ? (config.generator_settings.temperature ?? "")
+      : 0.7,
+    "generator-max-tokens": config.generator_settings?.max_tokens ?? 1024,
+    "generator-reasoning": config.generator_settings?.reasoning_effort ?? "",
+    temperature: settings ? (settings.temperature ?? "") : 0.7,
+    "max-tokens": settings?.max_tokens ?? 1024,
+    reasoning: settings?.reasoning_effort ?? "",
+  };
+  Object.entries(values).forEach(([key, value]) => {
+    const field = $("#" + key);
+    if (
+      ["actor", "generator", "reasoning", "generator-reasoning"].includes(
+        key,
+      ) &&
+      !Array.from(field.options).some((o) => o.value === value)
+    )
+      field.add(new Option(value, value));
+    field.value = value;
+  });
+}
+function frames() {
+  return (
+    data?.frames || [
+      { world: seed.world, event: { evidence: {}, kind: "seed" } },
+    ]
+  );
 }
 function render() {
-  const r = data.run;
-  $("#empty").hidden = true;
-  $("#workspace").hidden = false;
-  $("#run-title").textContent = r.name;
-  $("#status").textContent =
-    `${r.config.demo ? "SCRIPTED" : "LIVE"} / ${r.busy ? "WORKING" : r.status.toUpperCase()}`;
-  $("#actions").innerHTML =
-    `${r.actions} <small>/ ${r.config.action_limit}</small>`;
-  $("#progress").value = r.actions;
-  $("#progress").max = r.config.action_limit;
-  $("#resources").textContent = Object.keys(r.world.documents).length;
-  $("#expansions").textContent =
-    `${r.expansions} / ${r.config.expansion_limit} expansions`;
-  $("#cost").textContent = `$${r.charged.toFixed(4)}`;
-  $("#budget").textContent =
-    `$${r.config.dollar_limit.toFixed(2)} cap · $${r.reserved.toFixed(2)} reserved`;
-  $("#models").textContent = r.config.demo
-    ? "Scripted fixture"
-    : `${r.config.actor_model} / ${r.config.world_model}`;
-  $("#provider").textContent = r.config.demo
-    ? "No model calls · not research evidence"
-    : `${r.config.provider} · ${r.calls}/${r.config.call_limit} calls · fallback off`;
-  $("#activity-label").textContent = r.busy
-    ? "Agent action in progress…"
-    : "Trajectory persisted to SQLite";
-  const stopped = r.world.finished || r.actions >= r.config.action_limit;
-  $("#step").disabled = $("#play").disabled =
-    r.busy || r.status === "running" || stopped;
-  $("#pause").disabled = !r.busy && r.status !== "running";
-  $("#deadline").disabled = $("#revoke").disabled =
-    r.busy || r.status === "running" || r.world.finished;
-  $("#deadline-text").textContent = r.world.deadline;
-  $("#branch-note").hidden = !r.parent;
-  if (r.parent)
-    $("#branch-note").textContent =
-      `FORKED FROM ${r.parent.slice(0, 8)} · CHECKPOINT #${r.fork_seq} · shared-state SHA-256 ${r.fork_hash.slice(0, 16)}…`;
-  $("#event-count").textContent = data.events.length;
-  const events = data.events.filter(
-    (e) =>
-      filter === "all" ||
-      ![
-        "inference",
-        "response",
-        "control",
-        "generation",
-        "materialized",
-      ].includes(e.kind),
+  const fs = frames();
+  if (follow) selected = fs.length - 1;
+  selected = Math.min(selected, fs.length - 1);
+  const frame = fs[selected],
+    w = frame.world.flowers ?? {},
+    prev = selected ? (fs[selected - 1].world.flowers ?? {}) : null,
+    evidence = frame.event.evidence;
+  $("h1").textContent =
+    data?.run.name ??
+    (seed.world.business ? "Harbor Works" : "Flowers for Friday");
+  document.title = `${$("h1").textContent} · World trace`;
+  $("#system").textContent = data?.initial.actor_instructions ?? prompts.system;
+  $("#director-policy").textContent = frame.world.business
+    ? "Bellwether · bounded counterparties & scheduled check-ins"
+    : data && !data.run.experiment
+      ? "Legacy run · no director"
+      : "Neutral · construct missing resources";
+  $("#task").textContent = data ? fs[0].world.goal : prompts.task;
+  const configuredTools = data?.observation.tools ?? seed.tools;
+  $("#tools").textContent = Array.isArray(configuredTools)
+    ? configuredTools
+        .map(
+          (tool) =>
+            `${tool.name}(${[
+              ...tool.input_schema.required,
+              ...Object.keys(tool.input_schema.properties).filter(
+                (key) => !tool.input_schema.required.includes(key),
+              ),
+            ]
+              .map(
+                (key) =>
+                  key + (tool.input_schema.required.includes(key) ? "" : "?"),
+              )
+              .join(", ")})`,
+        )
+        .join("\n")
+    : configuredTools.split("; ").join("\n");
+  $("#seed").textContent = pretty(
+    fs[0].world.business ??
+      fs[0].world.flowers ??
+      fs[0].world.tools?.public_resources,
   );
-  $("#events").innerHTML = events
-    .slice()
-    .reverse()
-    .map(
-      (e) =>
-        `<button class="event ${selected?.type === "event" && selected.id === e.seq ? "active" : ""}" data-event="${e.seq}"><div class="event-top"><span>#${String(e.seq).padStart(3, "0")}</span><span class="kind ${esc(e.kind)}">${esc(e.kind)}</span><time>${new Date(e.timestamp * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</time></div><strong>${esc(e.summary)}</strong></button>`,
+  $("#seed-description").hidden = !frame.world.flowers;
+  $("#position").textContent = `Step ${selected} of ${fs.length - 1}`;
+  $("#scrubber").max = fs.length - 1;
+  $("#scrubber").value = selected;
+  const last = fs.length - 1,
+    interval = Math.max(1, Math.ceil(last / 10));
+  $("#ticks").innerHTML = fs
+    .map((_, i) =>
+      (i % interval === 0 && last - i >= interval / 2) || i === last
+        ? `<span style="left:${last ? (100 * i) / last : 0}%">${i}</span>`
+        : "",
     )
     .join("");
-  $("#documents").innerHTML = Object.entries(r.world.documents)
-    .map(
-      ([id, d]) =>
-        `<button class="document" data-document="${esc(id)}"><span class="icon">${d.readable ? "▤" : "⊘"}</span><span><h4>${esc(d.title)}</h4><small class="${d.origin === "world model" || d.origin === "scripted fixture" ? "generated" : ""}">${esc(d.origin.toUpperCase())} · ${d.readable ? "AVAILABLE TO READ" : "RESTRICTED"}</small></span></button>`,
-    )
-    .join("");
-  inspect();
-}
-function inspect() {
-  const box = $("#inspector-content");
-  if (!selected) {
-    box.innerHTML =
-      '<div class="inspector-empty"><div class="symbol">⌗</div><h4>Follow the evidence.</h4><p>Select an event to see what the agent<br>attempted and what actually happened.<br><br>Or inspect a world resource<br>and its provenance.</p></div>';
-    return;
-  }
-  if (selected.type === "document") {
-    const d = data.run.world.documents[selected.id];
-    if (!d) {
-      selected = null;
-      return inspect();
-    }
-    box.innerHTML = `<span class="source">RESOURCE / ${esc(selected.id)}</span><h2 class="evidence-title">${esc(d.title)}</h2><div class="evidence-label">${d.readable ? "AVAILABLE VIA READ TOOL" : "RESEARCHER ONLY · AGENT ACCESS DENIED"}</div><div class="evidence-body">${esc(d.body)}</div><div class="evidence-label">PROVENANCE</div><span class="source">${esc(d.origin)}</span>`;
-    return;
-  }
-  const e = data.events.find((e) => e.seq === selected.id);
-  if (!e) {
-    selected = null;
-    return inspect();
-  }
-  const result = e.evidence.result,
-    action = e.evidence.action;
-  box.innerHTML = `<span class="source">EVENT #${e.seq} / ${esc(e.kind.toUpperCase())}</span><h2 class="evidence-title">${esc(e.summary)}</h2>${action ? `<div class="evidence-label">ATTEMPT</div><div class="evidence-body">${esc(action.kind)} → ${esc(action.target)}${action.text ? "\n" + esc(action.text) : ""}</div>` : ""}${result ? `<div class="evidence-label">OBSERVED OUTCOME</div><div class="evidence-body">${esc(result.body || result.error || JSON.stringify(result, null, 2))}</div>` : e.evidence.notice ? `<div class="evidence-body">${esc(e.evidence.notice)}</div>` : e.evidence.error ? `<div class="evidence-body">${esc(e.evidence.error)}</div>` : "<p>Recorded system event. Full evidence is available below.</p>"}<div class="evidence-label">CHECKPOINT</div><span class="source">${e.checkpoint ? "Complete state · safe to fork" : "Action in flight · not forkable"}</span><button class="fork-button" id="fork-selected" ${e.checkpoint ? "" : "disabled"}>⑂ Fork from checkpoint #${e.seq}</button><details><summary>Inspect raw evidence</summary><pre>${esc(JSON.stringify(e.evidence, null, 2))}</pre></details>`;
-  $("#fork-selected").onclick = () =>
-    act(async () => {
-      const r = await api(`runs/${current}/fork`, { seq: e.seq });
-      await choose(r.id);
-    });
-}
-$("#new-run").onclick = $("#empty-create").onclick = () =>
-  $("#setup").showModal();
-document
-  .querySelectorAll("[data-close]")
-  .forEach(
-    (b) => (b.onclick = () => document.getElementById(b.dataset.close).close()),
-  );
-$("#setup-form").onsubmit = (e) => {
-  e.preventDefault();
-  act(async () => {
-    const f = new FormData(e.target);
-    const config = Object.fromEntries(f);
-    config.demo = config.demo === "true";
-    config.action_limit = Number(config.action_limit);
-    config.dollar_limit = Number(config.dollar_limit);
-    config.expansion_limit = 20;
-    config.call_limit = 120;
-    const r = await api("runs", config);
-    $("#setup").close();
-    await choose(r.id);
-  });
-};
-$("#runs").onclick = (e) => {
-  const b = e.target.closest("[data-run]");
-  if (b) act(() => choose(b.dataset.run));
-};
-$("#events").onclick = (e) => {
-  const b = e.target.closest("[data-event]");
-  if (b) {
-    selected = { type: "event", id: Number(b.dataset.event) };
-    render();
-  }
-};
-$("#documents").onclick = (e) => {
-  const b = e.target.closest("[data-document]");
-  if (b) {
-    selected = { type: "document", id: b.dataset.document };
-    inspect();
-  }
-};
-document.querySelectorAll("[data-filter]").forEach(
-  (b) =>
-    (b.onclick = () => {
-      filter = b.dataset.filter;
-      document
-        .querySelectorAll("[data-filter]")
-        .forEach((x) => x.classList.toggle("selected", x === b));
-      render();
-    }),
-);
-for (const [id, command] of [
-  ["step", "step"],
-  ["play", "run"],
-  ["pause", "pause"],
-])
-  $(`#${id}`).onclick = () =>
-    act(() => api(`runs/${current}/control`, { command }));
-for (const command of ["deadline", "revoke"])
-  $(`#${command}`).onclick = () =>
-    act(() => api(`runs/${current}/intervene`, { command }));
-$("#export").onclick = () => {
-  const url = URL.createObjectURL(
-    new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }),
-  );
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `frontier-${current}.json`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-};
-$("#compare").onclick = () =>
-  act(async () => {
-    const others = runs.filter((r) => r.id !== current);
-    $("#compare-select").innerHTML = others
+  $("#world-title").textContent = `World at step ${selected}`;
+  const changed = (key) => prev && pretty(w[key]) !== pretty(prev[key]);
+  const node = (key, title, body) =>
+    `<div class="node ${w[key] ? "" : "missing"} ${changed(key) ? "changed" : ""}"><strong>${title}</strong>${body}</div>`;
+  $("#world").innerHTML =
+    `<div class="node root"><strong>${esc(w.florist)}</strong><span>${esc(w.time)} · website & ordering service</span></div><div class="branches">${node("catalog", "Catalog", w.catalog ? w.catalog.map((p) => `<p>${esc(p.name)}<br><span>${money(p.price_cents)} · ${p.sympathy_appropriate ? "Sympathy" : "Other occasion"}</span></p>`).join("") : "<span>Not constructed</span>")}${node("delivery", "Delivery & policies", w.delivery ? w.delivery.options.map((d) => `<p>${esc(d.label)}<br><span>${money(d.fee_cents)} · Friday, ${d.arrival_hour}:00</span></p>`).join("") : "<span>Not constructed</span>")}</div><div class="order">${node("order", "Order", w.order ? `<span>${esc(w.order.confirmation)} · ${esc(w.order.status)}</span><p>${esc(w.order.arrangement)}<br>${money(w.order.total_cents)} total · Friday, ${w.order.arrival_hour}:00<br>${esc(w.order.address)}</p>` : "<span>Not placed</span>")}</div><div class="wallet"><span>Payment method · available</span><strong>${money(w.balance_cents)}</strong></div>`;
+  if (!frame.world.flowers) {
+    const resources = frame.world.tools?.public_resources ?? {};
+    const previous = selected
+      ? (fs[selected - 1].world.tools?.public_resources ?? {})
+      : resources;
+    $("#world").innerHTML = Object.entries(resources)
       .map(
-        (r) =>
-          `<option value="${r.id}">${esc(r.name)} · ${r.id.slice(0, 8)}</option>`,
+        ([url, resource]) =>
+          `<div class="node ${!previous[url] ? "changed" : ""}"><strong>${esc(resource.title)}</strong><span>${esc(url)}</span><details><summary>Content</summary><pre>${esc(resource.body)}</pre></details></div>`,
       )
       .join("");
-    $("#comparison-body").textContent = others.length
-      ? ""
-      : "Fork a checkpoint to create a comparison branch.";
-    if (others.length) await comparison();
-    $("#comparison").showModal();
-  });
-$("#compare-select").onchange = () => comparison().catch(error);
-async function comparison() {
-  const target = $("#compare-select").value;
-  $("#comparison-body").textContent = "Loading comparison…";
-  const other = await api(`runs/${target}`);
-  if (target !== $("#compare-select").value) return;
-  const a = data.run,
-    b = other.run;
-  const related =
-    a.parent === b.id ||
-    b.parent === a.id ||
-    (a.parent && a.parent === b.parent && a.fork_seq === b.fork_seq);
-  const split =
-    a.parent === b.id ? a.fork_seq : b.parent === a.id ? b.fork_seq : null;
-  const cards = [data, other]
-    .map((d) => {
-      const r = d.run;
-      const isParent = a.parent === r.id || b.parent === r.id;
-      const events = d.events.filter(
-        (e) =>
-          ["outcome", "denied", "expansion", "intervention", "error"].includes(
-            e.kind,
-          ) &&
-          (!isParent || split === null || e.seq > split),
-      );
-      return `<section class="compare-card"><h3>${esc(r.name)} · ${r.id.slice(0, 6)}</h3><div class="source">${r.actions} actions · ${r.expansions} expansions · $${r.charged.toFixed(4)}<br>${esc(r.status)} · ${r.config.demo ? "scripted fixture" : "live model"}</div><p>${esc(r.world.deadline)}</p>${events.map((e) => `<div class="entry"><span class="kind ${esc(e.kind)}">#${e.seq} ${esc(e.kind)}</span><br>${esc(e.summary)}${e.evidence.action?.text ? `<p>${esc(e.evidence.action.text)}</p>` : ""}${e.evidence.result?.error ? `<p>${esc(e.evidence.result.error)}</p>` : ""}${e.evidence.notice ? `<p>${esc(e.evidence.notice)}</p>` : ""}</div>`).join("") || "<p>No post-checkpoint outcomes yet.</p>"}</section>`;
-    })
-    .join("");
-  $("#comparison-body").innerHTML =
-    `<div class="comparison-note">${related ? "Shared ancestry found. Showing post-fork events where directly comparable." : "These runs do not share a direct checkpoint. This is not a controlled comparison."}</div><div class="compare-grid">${cards}</div>`;
+  }
+  if (frame.world.business) {
+    const b = frame.world.business,
+      contracts = b.contracts.filter((c) => c.seller === "harbor"),
+      paid = contracts.filter((c) => c.paid),
+      accepted = contracts.filter((c) => c.accepted);
+    $("#world").innerHTML =
+      `<div class="node root"><strong>Harbor Works · day ${Math.floor(frame.world.tools.elapsed_seconds / 86400)} / 30</strong><span>${money(b.organizations.harbor.cash)} cash · ${contracts.length} agreements · ${accepted.length} accepted · ${paid.length} paid</span></div><div class="branches">${contracts.map((c) => `<div class="node"><strong>${esc(b.organizations[c.buyer].name)}</strong><span>${esc(c.capability)} · ${money(c.price_cents)}<br>${c.paid ? "Paid" : c.accepted ? "Accepted · unpaid" : c.delivered_at !== null ? "Awaiting customer validation" : "Delivery owed"}<br>Due day ${(c.deadline / 86400).toFixed(1)} · ${esc(c.service ?? "No service delivered")}</span></div>`).join("") || '<div class="node missing">No customer agreements yet.</div>'}</div><div class="node"><strong>District · ${Object.keys(b.organizations).length - 1} other organizations</strong><span>${b.checkins} / 4 scheduled check-ins · ${money(b.backup_spent)} spent on alternatives</span></div><details><summary>Public resources · ${Object.keys(frame.world.tools.public_resources).length}</summary>${$("#world").innerHTML}</details>`;
+  }
+  $("#state").textContent = pretty(
+    frame.world.business
+      ? frame.world
+      : frame.world.tools
+        ? { ...w, tools: frame.world.tools }
+        : w,
+  );
+  const action = evidence.action;
+  $("#action").textContent = action
+    ? action.inputs
+      ? `${action.kind}\n${pretty(action.inputs)}`
+      : `${action.kind}(${action.target || ""})${action.text ? "\n" + action.text : ""}`
+    : selected === 0
+      ? "No action yet."
+      : frame.event.summary;
+  let result = evidence.result || evidence;
+  if (action?.kind === "http.request" && typeof result.body === "string") {
+    try {
+      result = { ...result, body: JSON.parse(result.body) };
+    } catch {
+      /* Keep non-JSON bodies as text. */
+    }
+  }
+  $("#result").textContent =
+    selected === 0
+      ? "The agent has the task and tools. World details must be discovered through tools."
+      : pretty(result);
+  const changes = prev ? Object.keys(w).filter((k) => changed(k)) : [];
+  $("#changes").innerHTML = changes.length
+    ? changes
+        .map(
+          (k) =>
+            `<p>${esc(k === "balance_cents" ? `Balance: ${money(prev[k])} → ${money(w[k])}` : k === "catalog" ? `Catalog created · ${w.catalog.length} bouquets` : k === "delivery" ? `Delivery service created · ${w.delivery.options.length} options and policies` : k === "order" ? `Order ${w.order.confirmation} confirmed · ${money(w.order.total_cents)}` : k + " changed")}</p>`,
+        )
+        .join("")
+    : "";
+  if (selected && frame.world.tools) {
+    for (const [key, label] of [
+      ["workspace", "Workspace files"],
+      ["messages", "Mailbox"],
+      ["public_resources", "Public resources"],
+      ["elapsed_seconds", "World time"],
+    ]) {
+      if (
+        pretty(frame.world.tools[key]) !==
+        pretty(fs[selected - 1].world.tools?.[key])
+      )
+        $("#changes").innerHTML +=
+          `<p>${label}${key === "elapsed_seconds" ? `: ${fs[selected - 1].world.tools?.elapsed_seconds ?? 0} → ${frame.world.tools.elapsed_seconds} seconds` : " changed."}</p>`;
+    }
+  }
+  if (!$("#changes").innerHTML)
+    $("#changes").innerHTML = "<p>No world state changes.</p>";
+  if (selected && frame.world.business) {
+    const before = fs[selected - 1].world.business,
+      after = frame.world.business;
+    for (const key of [
+      "organizations",
+      "offers",
+      "contracts",
+      "services",
+      "ledger",
+      "checkins",
+    ]) {
+      if (pretty(before?.[key]) !== pretty(after[key]))
+        $("#changes").innerHTML += `<p>${esc(key)} changed.</p>`;
+    }
+  }
+  const priorSeq = selected ? fs[selected - 1].event.seq : 0;
+  const generation = (data?.events || []).filter(
+    (e) =>
+      e.seq > priorSeq &&
+      e.seq <= frame.event.seq &&
+      (e.evidence.role === "world" ||
+        [
+          "director",
+          "construction_request",
+          "published",
+          "construction_rejected",
+          "institution",
+        ].includes(e.kind)),
+  );
+  $("#generation").hidden = generation.length === 0;
+  $("#generation-data").textContent = pretty(generation.map((e) => e.evidence));
+  const working = data?.run.busy || data?.run.status === "running";
+  $("#status").textContent = data
+    ? `${data.run.config.demo ? "Scripted" : "Live"} · ${working ? "working…" : data.run.status}`
+    : "Not started";
+  $("#pause").hidden = !working;
+  $("#run").hidden = !!working;
+  $("#step").disabled =
+    !id ||
+    !!working ||
+    !!data?.run.world.finished ||
+    data?.run.status === "exhausted";
+  $("#run").disabled = $("#step").disabled;
+  settingsState();
 }
-api("health")
-  .then(
-    (h) =>
-      ($("#key-status").textContent = h.key_available
-        ? "OpenRouter key configured"
-        : "No API key · demo available"),
-  )
-  .catch(error);
-refresh().catch(error);
+async function refresh() {
+  const request = id;
+  const runs = (await api("runs")).filter((r) => r.flowers || r.experiment);
+  if (id && !runs.some((r) => r.id === id)) {
+    id = null;
+    data = null;
+  }
+  $("#runs").innerHTML =
+    '<option value="">New run — configure</option><optgroup label="Inspect saved run">' +
+    runs
+      .map(
+        (r) =>
+          `<option value="${esc(r.id)}">Inspect · ${esc(r.name)} · ${r.id.slice(0, 6)}</option>`,
+      )
+      .join("") +
+    "</optgroup>";
+  $("#runs").value = id || "";
+  if (id) {
+    const next = await api(`runs/${id}`);
+    if (request !== id) return;
+    if (data?.run.id === next.run.id && data.run.seq === next.run.seq) return;
+    if (data?.run.id !== next.run.id) {
+      $("#experiment").value = next.run.experiment ?? "flowers";
+      showSettings(next.run.config);
+      prompts = {
+        system: next.initial.actor_instructions,
+        task: next.frames[0].world.goal,
+      };
+      $("#run-name").value = next.run.name;
+    }
+    data = next;
+  }
+  render();
+}
+async function create() {
+  for (const key of settingIds)
+    if (!$("#" + key).checkValidity())
+      throw Error("Check the model settings values.");
+  const bellwether = $("#experiment").value === "bellwether";
+  const r = await api($("#experiment").value, {
+    name: $("#run-name").value,
+    actor_system_prompt: prompts.system,
+    actor_user_prompt: prompts.task,
+    actor_model: $("#actor").value,
+    actor_settings: {
+      provider: "openrouter",
+      temperature:
+        $("#temperature").value === "" ? null : Number($("#temperature").value),
+      max_tokens: Number($("#max-tokens").value),
+      reasoning_effort: $("#reasoning").value || null,
+    },
+    world_model: $("#generator").value,
+    generator_settings: {
+      provider: "openrouter",
+      temperature:
+        $("#generator-temperature").value === ""
+          ? null
+          : Number($("#generator-temperature").value),
+      max_tokens: Number($("#generator-max-tokens").value),
+      reasoning_effort: $("#generator-reasoning").value || null,
+    },
+    provider: "openai",
+    demo: $("#mode").value === "true",
+    action_limit: bellwether ? 100 : 20,
+    expansion_limit: 10,
+    call_limit: bellwether ? 120 : 40,
+    dollar_limit: 1,
+  });
+  id = r.id;
+  data = null;
+  follow = true;
+  localStorage.setItem("flower-run", id);
+}
+$("#new").onclick = () => act(create);
+for (const key of ["system", "task"]) {
+  const button = $(`.edit-prompt[data-prompt="${key}"]`);
+  const close = () => {
+    editingPrompt = null;
+    $("#" + key + "-editor").hidden = true;
+    $("#" + key).hidden = false;
+    render();
+    button.focus();
+  };
+  button.onclick = () => {
+    editingPrompt = key;
+    $("#" + key + "-input").value = prompts[key];
+    $("#" + key).hidden = true;
+    $("#" + key + "-editor").hidden = false;
+    settingsState();
+    $("#" + key + "-input").focus();
+  };
+  $("#" + key + "-editor").onsubmit = (event) => {
+    event.preventDefault();
+    prompts[key] = $("#" + key + "-input").value;
+    close();
+  };
+  $(`.cancel-prompt[data-prompt="${key}"]`).onclick = close;
+}
+$("#runs").onchange = () =>
+  act(async () => {
+    id = $("#runs").value || null;
+    if (!id) {
+      $("#run-name").value = "";
+      await loadSeed(
+        $("#experiment").value === "records"
+          ? "bellwether"
+          : $("#experiment").value,
+      );
+    }
+    data = null;
+    follow = true;
+    $("#settings").open = true;
+    localStorage.setItem("flower-run", id || "");
+  });
+for (const command of ["step", "run", "pause"])
+  $("#" + command).onclick = () =>
+    act(async () => {
+      if (!id) throw Error("Validate and save the settings before running.");
+      follow = true;
+      await api(`runs/${id}/control`, { command });
+    });
+$("#scrubber").oninput = () => {
+  selected = Number($("#scrubber").value);
+  follow = false;
+  render();
+};
+$("#latest").onclick = () => {
+  follow = true;
+  render();
+};
+async function loadSeed(experiment) {
+  $("#experiment").value = experiment;
+  seed = await api(
+    experiment === "bellwether" ? "bellwether-seed" : "flower-seed",
+  );
+  prompts = { system: seed.system, task: seed.world.goal };
+  if (experiment === "bellwether") $("#mode").value = "false";
+}
+$("#experiment").onchange = () =>
+  act(async () => {
+    await loadSeed($("#experiment").value);
+    data = null;
+    follow = true;
+  });
+await loadSeed("bellwether").catch((e) => {
+  error(e);
+  throw e;
+});
+prompts = { system: seed.system, task: seed.world.goal };
+for (const key of ["actor", "generator"]) $("#" + key).onchange = capabilities;
+api("models")
+  .then((catalog) => {
+    models = catalog.sort((a, b) => a.id.localeCompare(b.id));
+    for (const key of ["actor", "generator"]) {
+      const select = $("#" + key),
+        value = select.value;
+      select.replaceChildren(...models.map((m) => new Option(m.id, m.id)));
+      if (!models.some((m) => m.id === value))
+        select.add(new Option(value, value));
+      select.value = value;
+    }
+    $("#catalog-status").hidden = true;
+    capabilities();
+  })
+  .catch(() => {
+    $("#catalog-status").textContent =
+      "Model list unavailable. Reload to retry; saved models remain available.";
+    capabilities();
+  });
+await refresh().catch(error);
+if (!id) $("#settings").open = true;
 setInterval(() => {
-  if (!pending && !$("#setup").open && !$("#comparison").open)
-    refresh().catch(error);
+  if (!pending) refresh().catch(error);
 }, 1800);
