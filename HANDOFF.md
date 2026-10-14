@@ -167,7 +167,9 @@ institutional changes, call counts and charged + reserved spending. It polls
 automatically. Pause finishes the in-flight action; the scrubber inspects history,
 and Latest resumes following the trace. The launch manifest is
 `data/audits/open-discovery-i-watch.json`; query its audit endpoint for current
-status. This section records launch, not a passing result. Do not restart the
+status. At the observed progress snapshot, intake-process and repair-scheduling
+had been generated and published and the actor was inspecting them. This is
+partial live evidence, not a completed restructuring result. Do not restart the
 server or change the experiment while it runs.
 
 For another checkout, POST the example JSON to `/api/institutions` with

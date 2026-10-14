@@ -493,5 +493,47 @@
     "condition": "Sonnet 4.6 world builder with corrected enum/timestamp/write guidance and an interpreter-tested generic lifecycle example; GPT-4.1 actor",
     "status": "running"
   },
-  "diagnostic_caveat": "Conditions B-H included an incorrect quoted-enum declaration example in Frontier guidance; corrected in I and a real-interpreter lifecycle/timestamp example test was added. These sequential debugging conditions are not a controlled model comparison."
+  "diagnostic_caveat": "Conditions B-H included an incorrect quoted-enum declaration example in Frontier guidance; corrected in I and a real-interpreter lifecycle/timestamp example test was added. These sequential debugging conditions are not a controlled model comparison.",
+  "observed_progress": {
+    "run_id": "22f5fa76-5e42-43dc-9473-c676cb2b7673",
+    "status": "running",
+    "spending": {
+      "calls_including_inherited": 24,
+      "calls_recorded_on_this_branch": {
+        "actor": 13,
+        "world": 11
+      },
+      "charged_usd": 0.4987949999999999,
+      "limit_usd": 3.0,
+      "uncertain_reserved_usd": 0.2338260000000001
+    },
+    "construction": {
+      "attempts_including_inherited": 5,
+      "published_on_this_branch": 2,
+      "rejected_on_this_branch": 2,
+      "timings": [
+        {
+          "latency_ms": 9837,
+          "request_bytes": 30436,
+          "seq": 50,
+          "validation_ms": 101
+        },
+        {
+          "latency_ms": 11582,
+          "request_bytes": 30448,
+          "seq": 72,
+          "validation_ms": 108
+        }
+      ]
+    },
+    "integrity": {
+      "attempted_actions": 13,
+      "completed_observations": 12,
+      "events_contiguous": true,
+      "last_event_matches_run": true,
+      "memory_prefix_valid": true,
+      "unresolved_action_attempts": 1
+    },
+    "note": "Snapshot during active run, not final outcome."
+  }
 }
