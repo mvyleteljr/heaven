@@ -34,6 +34,14 @@ pub struct State {
     pub snapshot: Value,
     pub stories: Value,
     pub receipts: BTreeMap<String, Receipt>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub generation: Option<crate::institutions::Policy>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub modules: BTreeMap<String, State>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub protected: Vec<Value>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub protected_types: Vec<String>,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -56,7 +64,7 @@ fn runtime() -> Result<(Vec<u8>, String)> {
     Ok((bytes, digest))
 }
 
-fn bridge(input: Value, expected: &str) -> Result<Value> {
+pub(crate) fn bridge(input: Value, expected: &str) -> Result<Value> {
     let (bundle, digest) = runtime()?;
     ensure!(
         digest == expected,
@@ -150,6 +158,10 @@ impl State {
             snapshot: response["snapshot"].clone(),
             stories: response["stories"].clone(),
             receipts: BTreeMap::new(),
+            generation: None,
+            modules: BTreeMap::new(),
+            protected: vec![],
+            protected_types: vec![],
         })
     }
     pub fn request(
@@ -159,9 +171,15 @@ impl State {
         body: Option<&str>,
         elapsed: u64,
     ) -> Result<Value> {
+        if let Some((key, route)) = crate::institutions::module_path(path) {
+            let module = self.modules.get_mut(key).ok_or_else(|| {
+                anyhow::anyhow!("Module not materialized; GET its /modules/NAME boundary first")
+            })?;
+            return module.request(method, route, body, elapsed);
+        }
         if method == "GET" && path == "/" {
             return Ok(
-                json!({"actor":self.definition.actor,"visibility":"All institution facts are public in this experiment.","routes":{"GET /model":"Canonical Onto source and available single actor Stories","GET /facts":"Current facts and derived values","POST /commands":{"command_id":"Stable unique key; reuse only for an identical retry","story":"Exact Story sentence","object":"Optional instance ID","participants":"Optional token to instance ID map","about":"Optional context ID","fields":"Optional creation fields; money is integer minor units"}},"authority":"Actor identity, source, clock, minting and system execution are host-owned."}),
+                json!({"actor":self.definition.actor,"visibility":"All institution facts are public in this experiment.","routes":{"GET /model":"Canonical Onto source and available single actor Stories","GET /facts":"Current facts and derived values","POST /commands":{"command_id":"Stable unique key; reuse only for an identical retry","story":"Exact Story sentence","object":"Optional instance ID","participants":"Optional token to instance ID map","about":"Optional context ID","fields":"Optional creation fields; money is integer minor units"}},"generation":self.generation,"module_count":self.modules.len(),"module_discovery":"When generation is enabled, GET /modules/NAME to materialize a missing capability. NAME is 1-48 lowercase ASCII letters, digits or hyphens. Its /model, /facts and /commands routes execute the generated Onto model. Modules share a read-only foundation; mutable state is local to each module.","authority":"Actor identity, foundation, clock and system execution are host-owned."}),
             );
         }
         if method == "GET" && path == "/model" {
@@ -172,12 +190,17 @@ impl State {
                 json!({"operation":"inspect","source":self.definition.source,"actor":self.definition.actor,"epoch":self.definition.epoch,"elapsed_seconds":elapsed,"snapshot":self.snapshot}),
                 &self.runtime_sha256,
             )?;
+            self.check_protected(&response["snapshot"])?;
             self.snapshot = response["snapshot"].clone();
             return Ok(json!({"snapshot":self.snapshot,"standing":response["standing"]}));
         }
         ensure!(
             method == "POST" && path == "/commands",
             "Unknown institution route"
+        );
+        ensure!(
+            self.generation.is_none(),
+            "Generative foundation is read-only; execute a module's commands"
         );
         let input: Input = serde_json::from_str(body.unwrap_or("{}"))?;
         ensure!(
@@ -209,6 +232,7 @@ impl State {
             serde_json::to_vec(&response["snapshot"])?.len() <= 262144,
             "Institution state exceeds 256 KiB"
         );
+        self.check_protected(&response["snapshot"])?;
         self.snapshot = response["snapshot"].clone();
         let result = response["result"].clone();
         self.receipts.insert(
@@ -219,6 +243,21 @@ impl State {
             },
         );
         Ok(result)
+    }
+
+    fn check_protected(&self, snapshot: &Value) -> Result<()> {
+        let actual: Vec<_> = snapshot["instances"]
+            .as_array()
+            .ok_or_else(|| anyhow::anyhow!("Invalid snapshot"))?
+            .iter()
+            .filter(|v| self.protected_types.iter().any(|t| v["type"] == *t))
+            .cloned()
+            .collect();
+        ensure!(
+            actual == self.protected,
+            "Generated command would change protected foundation facts or identity"
+        );
+        Ok(())
     }
 }
 

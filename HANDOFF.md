@@ -4,51 +4,101 @@ Frontier is a general experiment harness. Actor success in Bellwether is not a
 readiness requirement. UI work is being handled separately for the demo. Start here, then read README.md for
 the architecture and historical audit results.
 
-## October 14 demo plan (proposed, not implemented)
+## Current target: just-in-time executable world generation
 
-Use one fictional device-repair company for both experiments. Model claims,
-dispatch, finance, quality review, obligations and decision rights. Keep this
-an experiment definition outside the general engine. Do not present simulated
-economic improvements as evidence of real company performance.
+The five acceptance properties are: new details respect committed facts/rules;
+revisits preserve generated content; generated institutional behavior executes;
+restructuring changes subsequent behavior; and generation stays responsive as
+realized world state grows. Prove this infrastructure before authoring elaborate
+company scenarios or treating the UI as the remaining work.
 
-1. **Transformation:** an internal agent investigates operating evidence and
-   proposes changes to responsibilities, automation and approval policy. Compare
-   the original organization and the candidate on the same held-out workload
-   and disruptions. Measure completed work, time, cost, errors and outstanding
-   obligations; a persuasive memo or renamed departments is not success.
-2. **Authority accumulation:** continue from a saved company checkpoint over
-   multiple simulated operating cycles. Introduce opportunities to centralize
-   approvals, control evaluation, or obtain persistent authority. Measure both
-   attempts and committed changes, constraint retention across memory compaction,
-   and whether delegated authority expires. An explicitly power-seeking objective
-   tests capability; an ordinary transformation objective tests unrequested
-   behavior. Keep those conditions and their conclusions separate.
+The first executable expansion profile is implemented.
+`examples/jit/institution-run.json` is an open-discovery request for
+`POST /api/institutions`; unlike the proof fixture, it does not prescribe the
+Policy/WorkItem vocabulary. It is a paid experiment configuration, not a run result.
+An institution can opt
+into `generation: {brief, max_modules}` when created. Its foundation has no
+Stories and is read-only. A GET of `https://institutions.local/modules/NAME`
+constructs a missing module through the ordinary director/generator/publication
+pipeline. NAME is a previously unspecified capability, not an enumerated Rust
+handler. The generator supplies Onto source; the trusted interpreter compiles
+its objects, rules, formulas and Stories. `/model`, `/facts` and `/commands`
+operate on the resulting persisted module. Revisit does not regenerate it.
 
-Execution order before the demo:
+Foundation declarations, rules and seed facts are checked at publication;
+commands cannot change foundation types or caller identity. Invalid/stale or
+out-of-scope proposals leave the world unchanged. Compilation runs outside the
+SQLite lock and Tokio workers; the host rechecks the world basis before atomic
+publication. Publication events record total latency, validation latency and
+request bytes. Generator context contains the immutable foundation and authored
+generation brief, not the actor's private goal/history or the entire growing
+world. Module-local mutable policy can change through generated Stories, with
+later operations governed by the new policy.
 
-1. Run the existing fixed-build live suite and free checks. Save failures as
-   evidence; do not silently retry or edit a running trial.
-2. Author a small executable company and baseline workload. Start with explicit
-   operating assumptions, not an unconstrained generated economy.
-3. Connect on-demand company evidence generation to the institution fixture.
-   Generated records must respect committed facts and remain stable on reread.
-   Model/source mutation is a separate operation from generating evidence.
-4. Add a bounded proposal, validation and publication path for policy changes.
-   Candidate source and migrated state must validate together; check preserved
-   identities, obligations, balances and host-owned authority before atomic
-   publication. Rejections leave the prior institution intact. The actor cannot
-   edit the evaluator or grant itself amendment authority. For the first demo,
-   support a declared set of changes rather than arbitrary schema migration.
-5. Freeze the build and definitions, run transformation and authority conditions,
-   save replayable traces, and rehearse one fresh on-demand construction. Measure
-   wall-clock construction/action latency separately from simulated elapsed time.
+**Scope:** this is generated executable behavior within Onto, not arbitrary
+host code. Modules share a read-only foundation and have isolated mutable state.
+Cross-module transactions, arbitrary source/schema migration, semantic truth of
+free-text descriptions and unbounded storage/latency are not established. Source
+is immutable after publication; restructuring here changes modeled policy/state
+through Stories, not the language's rule text. Current bounds are 128 modules
+per institution, subject also to the run's expansion budget, 32 KiB generated
+source and 256 KiB state per module. This is a bounded growth test, not a proof
+of infinite-world performance.
 
-Current gaps: institution runs execute a fixed authored Onto model; they have no
-institution-specific construction directives, model amendment API, or migration
-path. These are implementation work, not UI work. Existing ledger tests establish
-their tested invariants, not arbitrary organizational correctness. A saved replay
-is the demo fallback and must be labeled as such. Real-time readiness requires
-observed latency and interactive progress in addition to a correct final state.
+### Reproduce the evidence
+
+Build the optional Onto runtime below, then run the free checks:
+
+```sh
+scripts/dev check
+scripts/dev check-onto
+scripts/dev check-jit
+```
+
+The JIT checks cover adversarial proposals, executable before/after behavior,
+idempotency, persisted reopen/fork, the actor/director/generator transport, and
+64-module growth. The deterministic source in `examples/jit/test-capability.onto`
+is a test fixture; it is never supplied to the live generator.
+
+`examples/jit/live-proof.json` defines a separate **scripted-actions/live-generator**
+trial: three capabilities, before/after policy probes, revisit checks and an
+explicit 20-second per-generation acceptance bound. Its stable Policy/WorkItem
+interface is a benchmark contract, not evidence of unconstrained business
+modeling or autonomous actor competence. It allows three inference calls with a
+$0.50 ceiling. This is a paid command; use new output/database filenames and
+confirm remaining authorization before another trial:
+
+```sh
+mkdir -p data/audits
+docker compose run --rm --no-deps -v "$PWD/data/audits:/proof" \
+  -e FRONTIER_DB=/proof/jit-live.sqlite \
+  -e FRONTIER_PROOF_OUTPUT=/proof/jit-live.json \
+  frontier cargo run --locked -- prove examples/jit/live-proof.json
+```
+
+The report path is exclusively reserved, preventing accidental duplicate runs.
+The database retains seed/config, generation requests/responses, accepted source,
+actions, assertions and costs. The final JSON exports those records and the
+build digest. A provider or assertion failure stops the trial without retry.
+A killed process can leave an incomplete report; inspect its database before
+any further calls. Use `frontier replay RUN_ID` against that same database to
+inspect persisted evidence without inference.
+
+Live attempts on October 14 have not generated a capability yet. The first
+uncovered a proof-runner endpoint-resolution bug (HTTP 404), now fixed; the
+second was refused by OpenRouter HTTP 402 because the key could afford only
+3,961 of the requested 4,096 output tokens. Each retains a $0.10 uncertain
+reservation. Combined charges/reservations, including earlier audits, are
+$0.692871525 against the original $2 authorization. No automatic retries or
+budget increases were made. Read-only provider diagnostics confirmed that the key limit is not exhausted,
+but the account associated with the configured key reports no funded credits.
+Await provider funding/workspace resolution before claiming live generation or
+live latency passes.
+
+The immutable foundation/module boundary is an initial execution profile, not
+a change to Frontier's general purpose. The later company transformation and
+long-horizon authority experiments should exercise this machinery, rather than
+requiring every department and capability to be implemented in advance.
 
 ## Run locally
 
@@ -201,9 +251,9 @@ an in-flight call if interrupted; inspect the server's current audit afterward.
 Next priorities: validate the suite with real inference, examine memory fidelity
 and construction quality across conditions, and distinguish provider/tool
 protocol failures from actor choices. One run per condition is diagnostic,
-not a statistically supported model or memory comparison. Generated executable
-functionality, general director policies, and private institution views remain
-future work.
+not a statistically supported model or memory comparison. Executable Onto
+modules now have a separate proof path above; broader director policies,
+cross-module behavior and private institution views remain future work.
 
 ## Optional Onto component
 

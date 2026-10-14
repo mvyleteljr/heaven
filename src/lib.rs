@@ -12,6 +12,7 @@ pub mod business;
 pub mod construction;
 pub mod experiments;
 pub mod hosting;
+pub mod institutions;
 pub mod memory;
 pub mod ontology;
 pub use experiments::flowers;

@@ -45,6 +45,7 @@ impl IntoResponse for Error {
 }
 type Api<T> = std::result::Result<Json<T>, Error>;
 
+mod jit_proof;
 #[cfg(test)]
 #[path = "main_tests.rs"]
 mod tests;
@@ -73,9 +74,9 @@ async fn main() -> Result<()> {
         args.len() <= 3
             && matches!(
                 args.get(1).map(String::as_str),
-                None | Some("demo" | "replay" | "audit" | "doctor")
+                None | Some("demo" | "replay" | "audit" | "doctor" | "prove")
             ),
-        "Usage: frontier [doctor|demo|replay RUN_ID|audit RUN_ID]"
+        "Usage: frontier [doctor|demo|replay RUN_ID|audit RUN_ID|prove SPEC.json]"
     );
     if args.get(1).map(String::as_str) == Some("doctor") {
         println!("{}", frontier::workspace::doctor()?);
@@ -159,6 +160,12 @@ async fn main() -> Result<()> {
         active: Arc::new(AtomicBool::new(false)),
         inference_url: "https://openrouter.ai/api/v1/chat/completions".into(),
     };
+    if args.get(1).map(String::as_str) == Some("prove") {
+        let spec = args
+            .get(2)
+            .ok_or_else(|| anyhow::anyhow!("Usage: frontier prove SPEC.json"))?;
+        return jit_proof::run(&app, spec).await;
+    }
     let router = Router::new()
         .route(
             "/",
@@ -298,6 +305,7 @@ struct InstitutionRunRequest {
     name: Option<String>,
     config: Config,
     institution: frontier::ontology::Definition,
+    generation: Option<frontier::institutions::Policy>,
 }
 async fn create_institutions(
     State(app): State<App>,
@@ -321,7 +329,11 @@ async fn create_institutions(
     }
     // Compile the authored model before contacting provider metadata or saving a run.
     let institution = tokio::task::spawn_blocking(move || {
-        frontier::ontology::State::initialize(request.institution)
+        let mut state = frontier::ontology::State::initialize(request.institution)?;
+        if let Some(policy) = request.generation {
+            frontier::institutions::enable(&mut state, policy)?;
+        }
+        Ok::<_, anyhow::Error>(state)
     })
     .await
     .map_err(anyhow::Error::from)??;
@@ -1119,6 +1131,7 @@ async fn execute_action(
 }
 
 async fn construct(app: &App, id: &str, action: &Action) -> Result<()> {
+    let started = std::time::Instant::now();
     let request = {
         let mut store = app.store.lock().unwrap();
         let mut run = store.load(id)?;
@@ -1142,14 +1155,30 @@ async fn construct(app: &App, id: &str, action: &Action) -> Result<()> {
     };
     let response = infer(app, id, "world", construction::GENERATOR, json!(&request)).await?;
     let proposal: construction::Proposal = serde_json::from_str(&response)?;
+    // Compilation may take seconds. Never hold the database lock or a Tokio
+    // worker while validating generated behavior. Recheck the basis at commit.
+    let mut candidate = app.store.lock().unwrap().load(id)?;
+    let validation_started = std::time::Instant::now();
+    let validation_request = request.clone();
+    let validation_proposal = proposal.clone();
+    candidate = tokio::task::spawn_blocking(move || {
+        construction::publish(&mut candidate, &validation_request, &validation_proposal)?;
+        Ok::<_, anyhow::Error>(candidate)
+    })
+    .await??;
+    let validation_ms = validation_started.elapsed().as_millis();
     let mut store = app.store.lock().unwrap();
     let mut run = store.load(id)?;
-    construction::publish(&mut run, &request, &proposal)?;
+    ensure!(
+        construction::basis(&run) == request.basis,
+        "World changed during construction validation"
+    );
+    run.world = candidate.world;
     store.commit(
         &mut run,
         "published",
         "Resource published",
-        json!({"proposal":proposal}),
+        json!({"proposal":proposal,"request_id":request.request_id,"latency_ms":started.elapsed().as_millis(),"validation_ms":validation_ms,"request_bytes":serde_json::to_vec(&request)?.len()}),
     )?;
     Ok(())
 }
@@ -1259,6 +1288,10 @@ fn inference_request(run: &Run, role: &str, system: &str, input: &Value) -> Resu
         &run.config.generator_settings
     };
     if let Some(settings) = settings {
+        ensure!(
+            !settings.endpoint.trim().is_empty(),
+            "Provider endpoint is unresolved; validate settings before inference"
+        );
         settings.apply(&mut request);
     }
     if role == "actor" && run.config.structured_actions {

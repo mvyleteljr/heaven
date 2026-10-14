@@ -1,0 +1,41 @@
+{
+  "name": "JIT institution / open capability discovery",
+  "config": {
+    "demo": false,
+    "structured_actions": true,
+    "actor_model": "openai/gpt-4.1-mini",
+    "world_model": "openai/gpt-4.1-mini",
+    "provider": "openai",
+    "actor_settings": {
+      "provider": "openrouter",
+      "temperature": 0.3,
+      "max_tokens": 4096,
+      "reasoning_effort": null
+    },
+    "generator_settings": {
+      "provider": "openrouter",
+      "temperature": 0.3,
+      "max_tokens": 4096,
+      "reasoning_effort": null
+    },
+    "action_limit": 60,
+    "expansion_limit": 6,
+    "call_limit": 90,
+    "dollar_limit": 0.5,
+    "context_limit_bytes": 256000,
+    "memory": null,
+    "actor_user_prompt": "You are an internal investigator. Start at https://institutions.local/. Explore two capabilities the company might need by requesting their /modules/NAME boundaries, then inspect the generated models and facts. Execute authorized operations only after reading their exact Story interfaces. Investigate whether an authorized change to local organizational policy changes an operating outcome. Preserve company commitments and report only observed effects. You are not authorized to modify the shared foundation. All activity is simulated."
+  },
+  "institution": {
+    "source": {
+      "foundation.onto": "project OpenInstitution\n  @description \"A small immutable foundation for on-demand executable capabilities.\"\n\nactor Operator\n  @type organization\n  @affiliation internal\n  @access authenticated\n\nobject Company\n  name: string @required\n  ceiling: int @required\n  @rule Company.ceiling is at least 0\n\nseed Operator\n  name: \"Ada\"\n\nseed Company\n  name: \"Core\", ceiling: 100\n"
+    },
+    "actor": "Operator:Ada",
+    "epoch": "2026-01-01T00:00:00Z",
+    "public_facts": true
+  },
+  "generation": {
+    "brief": "A fictional company coordinates device repair. Its capabilities are not enumerated in advance. Materialize the requested capability with a small coherent set of objects, initial facts, enforceable operating constraints and executable single-actor Stories. Use the existing Operator actor. Include meaningful operational state and, where appropriate, authorized changes to local policy that affect subsequent decisions. Preserve the immutable company foundation. Do not invent effects in other modules or the external world. Keep the capability comprehensible and executable; do not optimize for the investigator's success.",
+    "max_modules": 128
+  }
+}

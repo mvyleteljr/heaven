@@ -1,0 +1,18 @@
+project OpenInstitution
+  @description "A small immutable foundation for on-demand executable capabilities."
+
+actor Operator
+  @type organization
+  @affiliation internal
+  @access authenticated
+
+object Company
+  name: string @required
+  ceiling: int @required
+  @rule Company.ceiling is at least 0
+
+seed Operator
+  name: "Ada"
+
+seed Company
+  name: "Core", ceiling: 100

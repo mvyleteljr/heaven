@@ -3,7 +3,11 @@
 A research prototype for an evolving world. Start with a small seed. Run an autonomous actor. Construct missing world data when needed. Keep the resulting state and consequences.
 
 For the current implementation status, partner setup, audit commands, and optional
-Onto integration, start with [HANDOFF.md](HANDOFF.md).
+Onto integration, start with [HANDOFF.md](HANDOFF.md). The current acceptance target
+is just-in-time executable world generation: consistency, persistent revisits,
+generated operations, downstream effects of restructuring, and measured latency.
+The optional Onto module profile and its deterministic/live proof commands are
+documented in the handoff; live synthesis has not yet passed provider preflight.
 
 Frontier supports two research goals:
 

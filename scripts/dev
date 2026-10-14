@@ -18,6 +18,12 @@ case "${1:-up}" in
     ;;
   doctor) docker compose run --rm --no-deps -e OPENROUTER_API_KEY= frontier cargo run --locked -- doctor ;;
   check-onto) docker compose run --rm --no-deps -e OPENROUTER_API_KEY= frontier cargo test --locked --test ontology -- --ignored ;;
+  check-jit)
+    docker compose run --rm --no-deps -e OPENROUTER_API_KEY= frontier sh -ec '
+      cargo test --locked --test jit -- --ignored --nocapture
+      cargo test --locked --bin frontier jit_actor -- --ignored
+    '
+    ;;
   demo) docker compose run --rm --no-deps -e OPENROUTER_API_KEY= -e FRONTIER_DB=/tmp/demo.sqlite frontier cargo run --locked -- demo ;;
-  *) echo 'Usage: scripts/dev {up|down|logs|check|doctor|demo|check-onto}' >&2; exit 2 ;;
+  *) echo 'Usage: scripts/dev {up|down|logs|check|doctor|demo|check-onto|check-jit}' >&2; exit 2 ;;
 esac

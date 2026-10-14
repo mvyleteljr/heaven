@@ -596,3 +596,110 @@ async fn pause_remains_responsive_during_shell_and_survives_action_commit() -> R
     );
     Ok(())
 }
+
+#[tokio::test]
+#[ignore = "Requires optional Onto bundle; scripts/dev check-jit"]
+async fn jit_actor_director_generator_execution_records_one_publication_and_reuses_it() -> Result<()>
+{
+    let (mut app, mut run) = app(Config {
+        demo: false,
+        call_limit: 50,
+        dollar_limit: 2.0,
+        ..Config::default()
+    })?;
+    let spec: Value = serde_json::from_str(include_str!("../examples/jit/live-proof.json"))?;
+    let mut institution = frontier::ontology::State::initialize(serde_json::from_value(
+        spec["institution"].clone(),
+    )?)?;
+    frontier::institutions::enable(
+        &mut institution,
+        serde_json::from_value(spec["generation"].clone())?,
+    )?;
+    run.world.tools = Some(tools::State::empty());
+    run.world.ontology = Some(institution);
+    run.world.goal = "PRIVATE-ACTOR-GOAL-CANARY".into();
+    run.experiment = Some(experiments::Experiment::Institutions);
+    app.store
+        .lock()
+        .unwrap()
+        .commit(&mut run, "seed", "JIT transport test", json!({}))?;
+    let actions: Vec<Value> = spec["steps"].as_array().unwrap()[..11]
+        .iter()
+        .map(|s| s["action"].clone())
+        .collect();
+    let count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let generated = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let (c, g) = (count.clone(), generated.clone());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    app.inference_url = format!("http://{}/completion", listener.local_addr()?);
+    let router=Router::new().route("/completion",post(move |Json(request):Json<Value>|{
+        let (c,g,actions)=(c.clone(),g.clone(),actions.clone());
+        async move {
+            let input:Value=serde_json::from_str(request["messages"][1]["content"].as_str().unwrap()).unwrap();
+            let output=if request["messages"][0]["content"]==construction::GENERATOR {
+                g.fetch_add(1,Ordering::SeqCst);
+                assert!(!input.to_string().contains("PRIVATE-ACTOR-GOAL-CANARY"));
+                json!({"version":1,"request_id":input["request_id"],"basis":input["basis"],"result":{"status":"proposed","resources":[{"target":input["directive"]["target"],"operation":"create","initial_state":{"source":include_str!("../examples/jit/test-capability.onto")},"interface":input["interface"],"functionality":"onto.module.v1","dependencies":[frontier::ontology::ROOT]}]}})
+            } else { actions[c.fetch_add(1,Ordering::SeqCst)].clone() };
+            Json(json!({"usage":{"cost":0.0001},"choices":[{"finish_reason":"stop","message":{"content":output.to_string()}}]}))
+        }
+    }));
+    let _mock = Mock(tokio::spawn(async move {
+        axum::serve(listener, router).await.unwrap();
+    }));
+    for _ in 0..11 {
+        step(&app, &run.id).await?;
+    }
+    let store = app.store.lock().unwrap();
+    let saved = store.load(&run.id)?;
+    let events = store.events(&run.id)?;
+    assert_eq!(generated.load(Ordering::SeqCst), 1);
+    assert_eq!(saved.calls, 12);
+    assert_eq!(saved.expansions, 1);
+    for (n, expected) in [(3, false), (4, true), (5, true), (7, true), (9, false)] {
+        let body: Value = serde_json::from_str(
+            saved.world.transcript[n]["result"]["body"]
+                .as_str()
+                .unwrap(),
+        )?;
+        assert_eq!(body["committed"], expected);
+    }
+    assert_eq!(
+        saved.world.transcript[1]["result"]["body"],
+        saved.world.transcript[10]["result"]["body"]
+    );
+    let published: Vec<_> = events.iter().filter(|e| e.kind == "published").collect();
+    assert_eq!(published.len(), 1);
+    assert!(published[0].evidence["validation_ms"].as_u64().is_some());
+    let audit = frontier::audit::report(&saved, &events);
+    assert_eq!(audit["integrity"]["unresolved_action_attempts"], 0);
+    assert_eq!(audit["integrity"]["events_contiguous"], true);
+    Ok(())
+}
+
+#[tokio::test]
+async fn unresolved_provider_endpoint_fails_before_reserving_or_sending() -> Result<()> {
+    let (app, run) = app(Config {
+        demo: false,
+        generator_settings: Some(frontier::ActorSettings {
+            provider: "openrouter".into(),
+            temperature: None,
+            max_tokens: 4096,
+            reasoning_effort: None,
+            endpoint: String::new(),
+        }),
+        ..Config::default()
+    })?;
+    let error = infer(&app, &run.id, "world", "system", json!({}))
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("endpoint is unresolved"));
+    let store = app.store.lock().unwrap();
+    let saved = store.load(&run.id)?;
+    assert_eq!(saved.calls, 0);
+    assert_eq!(saved.reserved, 0.0);
+    let events = store.events(&run.id)?;
+    assert!(!events.iter().any(|e| e.kind == "inference"));
+    assert_eq!(events.last().unwrap().evidence["phase"], "preflight");
+    Ok(())
+}

@@ -1,0 +1,605 @@
+{
+  "config": {
+    "demo": false,
+    "structured_actions": true,
+    "actor_model": "openai/gpt-4.1-mini",
+    "world_model": "openai/gpt-4.1-mini",
+    "provider": "openai",
+    "actor_settings": {
+      "provider": "openrouter",
+      "temperature": 0.3,
+      "max_tokens": 4096,
+      "reasoning_effort": null
+    },
+    "generator_settings": {
+      "provider": "openrouter",
+      "temperature": 0.3,
+      "max_tokens": 4096,
+      "reasoning_effort": null
+    },
+    "action_limit": 80,
+    "expansion_limit": 3,
+    "call_limit": 3,
+    "dollar_limit": 0.5,
+    "context_limit_bytes": 256000,
+    "memory": null,
+    "actor_user_prompt": "Researcher-scripted executable generation test; no actor inference."
+  },
+  "institution": {
+    "source": {
+      "foundation.onto": "project OpenInstitution\n  @description \"A small immutable foundation for on-demand executable capabilities.\"\n\nactor Operator\n  @type organization\n  @affiliation internal\n  @access authenticated\n\nobject Company\n  name: string @required\n  ceiling: int @required\n  @rule Company.ceiling is at least 0\n\nseed Operator\n  name: \"Ada\"\n\nseed Company\n  name: \"Core\", ceiling: 100\n"
+    },
+    "actor": "Operator:Ada",
+    "epoch": "2026-01-01T00:00:00Z",
+    "public_facts": true
+  },
+  "generation": {
+    "brief": "One company discovers capabilities on demand. For this infrastructure benchmark every requested capability must implement the following portable interface in its own namespace, using newly generated Onto source: Policy named main has int limit initially 10, constrained to 0..100. WorkItem has int amount greater than zero, and a policy reference; no WorkItem may exceed its Policy limit. The Story Operator creates WorkItem for Policy must create the requested item, linking the supplied Policy, with amount supplied by the caller. Operator expands Policy must change limit to 50. Model this as mutable organizational policy read by operating constraints, not a hardcoded acceptance of the example amount. Do not seed WorkItems. Use the existing Operator and Company from the immutable foundation. You may give each capability appropriate descriptions and additional non-conflicting domain detail. No foundation edits. No System stories. Do not write or refer to the benchmark evaluator.",
+    "max_modules": 128
+  },
+  "steps": [
+    {
+      "label": "claims-review/materialize",
+      "action": {
+        "kind": "http.request",
+        "inputs": {
+          "method": "GET",
+          "url": "https://institutions.local/modules/claims-review"
+        }
+      },
+      "expect": {
+        "actor": "Operator:Ada"
+      }
+    },
+    {
+      "label": "claims-review/model",
+      "action": {
+        "kind": "http.request",
+        "inputs": {
+          "method": "GET",
+          "url": "https://institutions.local/modules/claims-review/model"
+        }
+      },
+      "expect": {}
+    },
+    {
+      "label": "claims-review/initial",
+      "action": {
+        "kind": "http.request",
+        "inputs": {
+          "method": "GET",
+          "url": "https://institutions.local/modules/claims-review/facts"
+        }
+      },
+      "expect": {
+        "snapshot": {
+          "instances": [
+            {
+              "id": "Company:Core",
+              "fields": {
+                "ceiling": 100
+              }
+            },
+            {
+              "id": "Policy:main",
+              "fields": {
+                "limit": 10
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "label": "claims-review/refuse-before",
+      "action": {
+        "kind": "http.request",
+        "inputs": {
+          "method": "POST",
+          "url": "https://institutions.local/modules/claims-review/commands",
+          "body": "{\"command_id\": \"before\", \"story\": \"Operator creates WorkItem for Policy\", \"participants\": {\"Policy\": \"Policy:main\"}, \"fields\": {\"amount\": 20}}"
+        }
+      },
+      "expect": {
+        "committed": false
+      }
+    },
+    {
+      "label": "claims-review/restructure",
+      "action": {
+        "kind": "http.request",
+        "inputs": {
+          "method": "POST",
+          "url": "https://institutions.local/modules/claims-review/commands",
+          "body": "{\"command_id\": \"restructure\", \"story\": \"Operator expands Policy\", \"object\": \"Policy:main\"}"
+        }
+      },
+      "expect": {
+        "committed": true
+      }
+    },
+    {
+      "label": "claims-review/accept-after",
+      "action": {
+        "kind": "http.request",
+        "inputs": {
+          "method": "POST",
+          "url": "https://institutions.local/modules/claims-review/commands",
+          "body": "{\"command_id\": \"after\", \"story\": \"Operator creates WorkItem for Policy\", \"participants\": {\"Policy\": \"Policy:main\"}, \"fields\": {\"amount\": 20}}"
+        }
+      },
+      "expect": {
+        "committed": true
+      }
+    },
+    {
+      "label": "claims-review/facts-after",
+      "action": {
+        "kind": "http.request",
+        "inputs": {
+          "method": "GET",
+          "url": "https://institutions.local/modules/claims-review/facts"
+        }
+      },
+      "expect": {
+        "snapshot": {
+          "instances": [
+            {
+              "id": "Company:Core",
+              "fields": {
+                "ceiling": 100
+              }
+            },
+            {
+              "id": "Policy:main",
+              "fields": {
+                "limit": 50
+              }
+            },
+            {
+              "type": "WorkItem",
+              "fields": {
+                "amount": 20
+              }
+            }
+          ]
+        }
+      },
+      "select": "/snapshot/instances"
+    },
+    {
+      "label": "claims-review/duplicate",
+      "action": {
+        "kind": "http.request",
+        "inputs": {
+          "method": "POST",
+          "url": "https://institutions.local/modules/claims-review/commands",
+          "body": "{\"command_id\": \"after\", \"story\": \"Operator creates WorkItem for Policy\", \"participants\": {\"Policy\": \"Policy:main\"}, \"fields\": {\"amount\": 20}}"
+        }
+      },
+      "expect": {
+        "committed": true
+      },
+      "same_as": "claims-review/accept-after"
+    },
+    {
+      "label": "claims-review/no-double-effect",
+      "action": {
+        "kind": "http.request",
+        "inputs": {
+          "method": "GET",
+          "url": "https://institutions.local/modules/claims-review/facts"
+        }
+      },
+      "expect": {},
+      "same_as": "claims-review/facts-after",
+      "select": "/snapshot/instances"
+    },
+    {
+      "label": "claims-review/refuse-excess",
+      "action": {
+        "kind": "http.request",
+        "inputs": {
+          "method": "POST",
+          "url": "https://institutions.local/modules/claims-review/commands",
+          "body": "{\"command_id\": \"excess\", \"story\": \"Operator creates WorkItem for Policy\", \"participants\": {\"Policy\": \"Policy:main\"}, \"fields\": {\"amount\": 101}}"
+        }
+      },
+      "expect": {
+        "committed": false
+      }
+    },
+    {
+      "label": "claims-review/revisit",
+      "action": {
+        "kind": "http.request",
+        "inputs": {
+          "method": "GET",
+          "url": "https://institutions.local/modules/claims-review/model"
+        }
+      },
+      "expect": {},
+      "same_as": "claims-review/model"
+    },
+    {
+      "label": "dispatch-routing/materialize",
+      "action": {
+        "kind": "http.request",
+        "inputs": {
+          "method": "GET",
+          "url": "https://institutions.local/modules/dispatch-routing"
+        }
+      },
+      "expect": {
+        "actor": "Operator:Ada"
+      }
+    },
+    {
+      "label": "dispatch-routing/model",
+      "action": {
+        "kind": "http.request",
+        "inputs": {
+          "method": "GET",
+          "url": "https://institutions.local/modules/dispatch-routing/model"
+        }
+      },
+      "expect": {}
+    },
+    {
+      "label": "dispatch-routing/initial",
+      "action": {
+        "kind": "http.request",
+        "inputs": {
+          "method": "GET",
+          "url": "https://institutions.local/modules/dispatch-routing/facts"
+        }
+      },
+      "expect": {
+        "snapshot": {
+          "instances": [
+            {
+              "id": "Company:Core",
+              "fields": {
+                "ceiling": 100
+              }
+            },
+            {
+              "id": "Policy:main",
+              "fields": {
+                "limit": 10
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "label": "dispatch-routing/refuse-before",
+      "action": {
+        "kind": "http.request",
+        "inputs": {
+          "method": "POST",
+          "url": "https://institutions.local/modules/dispatch-routing/commands",
+          "body": "{\"command_id\": \"before\", \"story\": \"Operator creates WorkItem for Policy\", \"participants\": {\"Policy\": \"Policy:main\"}, \"fields\": {\"amount\": 20}}"
+        }
+      },
+      "expect": {
+        "committed": false
+      }
+    },
+    {
+      "label": "dispatch-routing/restructure",
+      "action": {
+        "kind": "http.request",
+        "inputs": {
+          "method": "POST",
+          "url": "https://institutions.local/modules/dispatch-routing/commands",
+          "body": "{\"command_id\": \"restructure\", \"story\": \"Operator expands Policy\", \"object\": \"Policy:main\"}"
+        }
+      },
+      "expect": {
+        "committed": true
+      }
+    },
+    {
+      "label": "dispatch-routing/accept-after",
+      "action": {
+        "kind": "http.request",
+        "inputs": {
+          "method": "POST",
+          "url": "https://institutions.local/modules/dispatch-routing/commands",
+          "body": "{\"command_id\": \"after\", \"story\": \"Operator creates WorkItem for Policy\", \"participants\": {\"Policy\": \"Policy:main\"}, \"fields\": {\"amount\": 20}}"
+        }
+      },
+      "expect": {
+        "committed": true
+      }
+    },
+    {
+      "label": "dispatch-routing/facts-after",
+      "action": {
+        "kind": "http.request",
+        "inputs": {
+          "method": "GET",
+          "url": "https://institutions.local/modules/dispatch-routing/facts"
+        }
+      },
+      "expect": {
+        "snapshot": {
+          "instances": [
+            {
+              "id": "Company:Core",
+              "fields": {
+                "ceiling": 100
+              }
+            },
+            {
+              "id": "Policy:main",
+              "fields": {
+                "limit": 50
+              }
+            },
+            {
+              "type": "WorkItem",
+              "fields": {
+                "amount": 20
+              }
+            }
+          ]
+        }
+      },
+      "select": "/snapshot/instances"
+    },
+    {
+      "label": "dispatch-routing/duplicate",
+      "action": {
+        "kind": "http.request",
+        "inputs": {
+          "method": "POST",
+          "url": "https://institutions.local/modules/dispatch-routing/commands",
+          "body": "{\"command_id\": \"after\", \"story\": \"Operator creates WorkItem for Policy\", \"participants\": {\"Policy\": \"Policy:main\"}, \"fields\": {\"amount\": 20}}"
+        }
+      },
+      "expect": {
+        "committed": true
+      },
+      "same_as": "dispatch-routing/accept-after"
+    },
+    {
+      "label": "dispatch-routing/no-double-effect",
+      "action": {
+        "kind": "http.request",
+        "inputs": {
+          "method": "GET",
+          "url": "https://institutions.local/modules/dispatch-routing/facts"
+        }
+      },
+      "expect": {},
+      "same_as": "dispatch-routing/facts-after",
+      "select": "/snapshot/instances"
+    },
+    {
+      "label": "dispatch-routing/refuse-excess",
+      "action": {
+        "kind": "http.request",
+        "inputs": {
+          "method": "POST",
+          "url": "https://institutions.local/modules/dispatch-routing/commands",
+          "body": "{\"command_id\": \"excess\", \"story\": \"Operator creates WorkItem for Policy\", \"participants\": {\"Policy\": \"Policy:main\"}, \"fields\": {\"amount\": 101}}"
+        }
+      },
+      "expect": {
+        "committed": false
+      }
+    },
+    {
+      "label": "dispatch-routing/revisit",
+      "action": {
+        "kind": "http.request",
+        "inputs": {
+          "method": "GET",
+          "url": "https://institutions.local/modules/dispatch-routing/model"
+        }
+      },
+      "expect": {},
+      "same_as": "dispatch-routing/model"
+    },
+    {
+      "label": "quality-control/materialize",
+      "action": {
+        "kind": "http.request",
+        "inputs": {
+          "method": "GET",
+          "url": "https://institutions.local/modules/quality-control"
+        }
+      },
+      "expect": {
+        "actor": "Operator:Ada"
+      }
+    },
+    {
+      "label": "quality-control/model",
+      "action": {
+        "kind": "http.request",
+        "inputs": {
+          "method": "GET",
+          "url": "https://institutions.local/modules/quality-control/model"
+        }
+      },
+      "expect": {}
+    },
+    {
+      "label": "quality-control/initial",
+      "action": {
+        "kind": "http.request",
+        "inputs": {
+          "method": "GET",
+          "url": "https://institutions.local/modules/quality-control/facts"
+        }
+      },
+      "expect": {
+        "snapshot": {
+          "instances": [
+            {
+              "id": "Company:Core",
+              "fields": {
+                "ceiling": 100
+              }
+            },
+            {
+              "id": "Policy:main",
+              "fields": {
+                "limit": 10
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "label": "quality-control/refuse-before",
+      "action": {
+        "kind": "http.request",
+        "inputs": {
+          "method": "POST",
+          "url": "https://institutions.local/modules/quality-control/commands",
+          "body": "{\"command_id\": \"before\", \"story\": \"Operator creates WorkItem for Policy\", \"participants\": {\"Policy\": \"Policy:main\"}, \"fields\": {\"amount\": 20}}"
+        }
+      },
+      "expect": {
+        "committed": false
+      }
+    },
+    {
+      "label": "quality-control/restructure",
+      "action": {
+        "kind": "http.request",
+        "inputs": {
+          "method": "POST",
+          "url": "https://institutions.local/modules/quality-control/commands",
+          "body": "{\"command_id\": \"restructure\", \"story\": \"Operator expands Policy\", \"object\": \"Policy:main\"}"
+        }
+      },
+      "expect": {
+        "committed": true
+      }
+    },
+    {
+      "label": "quality-control/accept-after",
+      "action": {
+        "kind": "http.request",
+        "inputs": {
+          "method": "POST",
+          "url": "https://institutions.local/modules/quality-control/commands",
+          "body": "{\"command_id\": \"after\", \"story\": \"Operator creates WorkItem for Policy\", \"participants\": {\"Policy\": \"Policy:main\"}, \"fields\": {\"amount\": 20}}"
+        }
+      },
+      "expect": {
+        "committed": true
+      }
+    },
+    {
+      "label": "quality-control/facts-after",
+      "action": {
+        "kind": "http.request",
+        "inputs": {
+          "method": "GET",
+          "url": "https://institutions.local/modules/quality-control/facts"
+        }
+      },
+      "expect": {
+        "snapshot": {
+          "instances": [
+            {
+              "id": "Company:Core",
+              "fields": {
+                "ceiling": 100
+              }
+            },
+            {
+              "id": "Policy:main",
+              "fields": {
+                "limit": 50
+              }
+            },
+            {
+              "type": "WorkItem",
+              "fields": {
+                "amount": 20
+              }
+            }
+          ]
+        }
+      },
+      "select": "/snapshot/instances"
+    },
+    {
+      "label": "quality-control/duplicate",
+      "action": {
+        "kind": "http.request",
+        "inputs": {
+          "method": "POST",
+          "url": "https://institutions.local/modules/quality-control/commands",
+          "body": "{\"command_id\": \"after\", \"story\": \"Operator creates WorkItem for Policy\", \"participants\": {\"Policy\": \"Policy:main\"}, \"fields\": {\"amount\": 20}}"
+        }
+      },
+      "expect": {
+        "committed": true
+      },
+      "same_as": "quality-control/accept-after"
+    },
+    {
+      "label": "quality-control/no-double-effect",
+      "action": {
+        "kind": "http.request",
+        "inputs": {
+          "method": "GET",
+          "url": "https://institutions.local/modules/quality-control/facts"
+        }
+      },
+      "expect": {},
+      "same_as": "quality-control/facts-after",
+      "select": "/snapshot/instances"
+    },
+    {
+      "label": "quality-control/refuse-excess",
+      "action": {
+        "kind": "http.request",
+        "inputs": {
+          "method": "POST",
+          "url": "https://institutions.local/modules/quality-control/commands",
+          "body": "{\"command_id\": \"excess\", \"story\": \"Operator creates WorkItem for Policy\", \"participants\": {\"Policy\": \"Policy:main\"}, \"fields\": {\"amount\": 101}}"
+        }
+      },
+      "expect": {
+        "committed": false
+      }
+    },
+    {
+      "label": "quality-control/revisit",
+      "action": {
+        "kind": "http.request",
+        "inputs": {
+          "method": "GET",
+          "url": "https://institutions.local/modules/quality-control/model"
+        }
+      },
+      "expect": {},
+      "same_as": "quality-control/model"
+    },
+    {
+      "label": "cross-growth-revisit",
+      "action": {
+        "kind": "http.request",
+        "inputs": {
+          "method": "GET",
+          "url": "https://institutions.local/modules/claims-review/facts"
+        }
+      },
+      "expect": {},
+      "same_as": "claims-review/facts-after",
+      "select": "/snapshot/instances"
+    }
+  ],
+  "max_generation_ms": 20000
+}
