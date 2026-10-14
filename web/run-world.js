@@ -2,7 +2,7 @@ const transitions = new WeakMap();
 const layoutSelector = [
   ".stage-card", ".agent-state-card", ".agent-budget", ".agent-state-metrics", ".agent-state-metrics > div",
   ".snapshot", ".fact-record", ".fact-row", ".fact-value", "details", "pre",
-  "svg circle", ".domain-list", ".domain-fields", ".domain-fields > div", ".domain-map", ".pack-children", ".domain-inspector",
+  "svg circle", ".domain-list", ".domain-fields", ".domain-fields > div", ".domain-map", ".pack-children", ".domain-inspector", ".ontology-changes", ".concept-references",
 ].join(",");
 const duration = 360;
 const easing = "cubic-bezier(.22,1,.36,1)";

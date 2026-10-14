@@ -332,7 +332,7 @@ export function renderWorld(frame, previous, view = "facts", focus = "world") {
   const unchanged = compare && worldSignature(world) === worldSignature(before);
   const domainView = view === "domains" || view === "structure" || view === "tree";
   let body = "";
-  if (domainView) body = renderStructure(world, view, focus);
+  if (domainView) body = renderStructure(world, view, focus, before);
   else {
     if (world.ontology) {
       const modules = entries(world.ontology.modules);
@@ -344,5 +344,5 @@ export function renderWorld(frame, previous, view = "facts", focus = "world") {
     body += resourcesSection(world, before, compare);
     if (!body) body = '<p class="fact-note">World facts will appear here once the experiment loads.</p>';
   }
-  return `<article class="stage-card fact-card"><div class="card-meta"><h2>${domainView ? view === "tree" ? "Tree" : "Circle pack" : "Facts"}</h2><span>${esc(unchanged ? "Facts unchanged" : compare ? `Last change${frame.world_checkpoint ? ` · checkpoint ${frame.world_checkpoint}` : ""}` : "Initial snapshot")}</span></div>${body}</article>`;
+  return `<article class="stage-card fact-card"><div class="card-meta"><h2>${domainView ? view === "tree" ? "Tree" : "Ontology" : "Facts"}</h2><span>${esc(unchanged ? "Facts unchanged" : compare ? `Last change${frame.world_checkpoint ? ` · checkpoint ${frame.world_checkpoint}` : ""}` : "Initial snapshot")}</span></div>${body}</article>`;
 }

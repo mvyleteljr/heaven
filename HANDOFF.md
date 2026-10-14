@@ -808,3 +808,32 @@ integration tests and four JIT main tests passed across the initial run and the
 focused recheck after correcting the new memory fixture's Story syntax. The
 port 3001 preview serves the corrected seed and editor guidance. No paid calls;
 optional authored Onto suites were not repeated for this prompt-only behavior change.
+
+### Heavenban and the Ontology overview
+
+The `/run` page title and wordmark are Heavenban; Circle pack is labeled Ontology.
+Ontology and Tree project actor/object types and authored Story groups from recorded
+Ontolang, with saved instances and executable operations. HTTP hosts, files,
+messages and hosting metadata remain in Facts instead of appearing as domains.
+Types remain visible before their first instance exists.
+
+One Institution root contains shared actors/objects and generated domains. The
+Ontolang project identifier is not a sibling domain. Modules link to shared types
+referenced by their executable Story sentences and do not repeat foundation records.
+The packed overview flattens category wrappers and stops at types: each concept has
+one solid circle, with an instance count. Selecting a type reveals its instances
+and recorded fields/status. Story groups expose operations in the inspector without
+extra concentric circles. Tree retains the detailed hierarchy. Canonical IDs remain
+stable; creating instances updates counts without repacking the concept overview.
+
+Checkpoint comparisons distinguish domain publication, instance creation/removal,
+and field changes. Expansion switches to Ontology while retaining the Institution
+overview instead of zooming automatically into the new module. Manual drill-down,
+shared references and historical inspection remain available.
+
+Validation: all 81 JavaScript tests passed, with all 30 controller tests passing
+again after the title change. Port 3001 browser checks covered the initial foundation,
+publication with zero requests, a committed pending request, historical navigation,
+and Operator → Ada drill-down. The rebuilt server serves the Heavenban title and
+wordmark. Verification used saved history only; no inference calls were made. Rust
+and optional Onto suites were not repeated for these UI changes.
