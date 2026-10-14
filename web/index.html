@@ -121,11 +121,16 @@
           <section aria-label="Director configuration">
             <h3>Director</h3>
             <p id="director-policy">Neutral · construct missing resources</p>
+            <label>Actor memory<select id="memory-mode"><option value="rolling">Rolling memory + exact history recall</option><option value="full">Full history</option></select></label>
+            <label>Action format<select id="action-format"><option value="structured">Structured (recommended)</option><option value="legacy">Legacy JSON</option></select></label>
+            <label>Request context limit (bytes)<input id="context-limit" type="number" min="40000" max="1048576" step="1" value="256000" /></label>
+            <p class="field-note">Exact history stays saved. Rolling memory summarizes older observations with citations and keeps recent observations in context. Memory calls use the run’s inference budget.</p>
           </section>
         </div>
         <button id="new">Validate & save</button>
         <p id="catalog-status" role="status">Loading OpenRouter models…</p>
         <p id="settings-status" role="status"></p>
+        <p id="key-status" role="status" hidden>Live runs need a server-side OPENROUTER_API_KEY. To try the free example, select Willow &amp; Stem and Scripted example.</p>
       </details>
       <div class="seeds">
         <details>
@@ -218,6 +223,7 @@
             <summary>Stored state</summary>
             <pre id="state"></pre>
           </details>
+          <details><summary>Actor memory at this checkpoint</summary><pre id="memory-state"></pre></details>
         </section>
         <section class="trace" aria-label="Selected action">
           <h3>Agent action</h3>
@@ -227,7 +233,7 @@
           <h3>World state changes</h3>
           <div id="changes"></div>
           <details id="generation">
-            <summary>Director & construction evidence</summary>
+            <summary>Director, construction &amp; memory evidence</summary>
             <pre id="generation-data"></pre>
           </details>
         </section>

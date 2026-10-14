@@ -18,6 +18,8 @@ let id = localStorage.getItem("flower-run"),
   selected = 0,
   follow = true,
   pending = false;
+let refreshVersion = 0;
+let refreshes = 0;
 async function api(path, body) {
   const r = await fetch(
     "/api/" + path,
@@ -42,6 +44,7 @@ function error(e) {
 }
 async function act(fn) {
   if (pending) return;
+  ++refreshVersion;
   pending = true;
   settingsState();
   $("#error").hidden = true;
@@ -70,6 +73,9 @@ const settingIds = [
   "generator-temperature",
   "generator-max-tokens",
   "generator-reasoning",
+  "context-limit",
+  "memory-mode",
+  "action-format",
 ];
 function capabilities() {
   for (const [modelId, prefix] of [
@@ -127,10 +133,17 @@ function settingsState() {
     : id
       ? "Inspecting saved settings · read-only"
       : "Configure a new run, then validate & save.";
+  const working = data?.run.busy || data?.run.status === "running";
+  $("#step").disabled = pending || !id || !!working || !!data?.run.world.finished || data?.run.actions >= data?.run.config.action_limit;
+  $("#run").disabled = $("#step").disabled;
+  $("#pause").disabled = pending;
 }
 function showSettings(config) {
   const settings = config.actor_settings;
   const values = {
+    "memory-mode": config.memory ? "rolling" : "full",
+    "action-format": config.structured_actions ? "structured" : "legacy",
+    "context-limit": config.context_limit_bytes ?? 40000,
     mode: String(config.demo),
     actor: config.actor_model,
     generator: config.world_model,
@@ -251,6 +264,9 @@ function render() {
         ? { ...w, tools: frame.world.tools }
         : w,
   );
+  $("#memory-state").textContent = frame.memory
+    ? pretty(frame.memory)
+    : "Full history; no rolling summary at this checkpoint.";
   const action = evidence.action;
   $("#action").textContent = action
     ? action.inputs
@@ -317,7 +333,7 @@ function render() {
     (e) =>
       e.seq > priorSeq &&
       e.seq <= frame.event.seq &&
-      (e.evidence.role === "world" ||
+      (e.evidence.role === "world" || e.evidence.role === "memory" || e.kind === "memory" ||
         [
           "director",
           "construction_request",
@@ -343,38 +359,57 @@ function render() {
   settingsState();
 }
 async function refresh() {
-  const request = id;
-  const runs = (await api("runs")).filter((r) => r.flowers || r.experiment);
-  if (id && !runs.some((r) => r.id === id)) {
-    id = null;
-    data = null;
-  }
-  $("#runs").innerHTML =
-    '<option value="">New run — configure</option><optgroup label="Inspect saved run">' +
-    runs
-      .map(
-        (r) =>
-          `<option value="${esc(r.id)}">Inspect · ${esc(r.name)} · ${r.id.slice(0, 6)}</option>`,
-      )
-      .join("") +
-    "</optgroup>";
-  $("#runs").value = id || "";
-  if (id) {
-    const next = await api(`runs/${id}`);
-    if (request !== id) return;
-    if (data?.run.id === next.run.id && data.run.seq === next.run.seq) return;
-    if (data?.run.id !== next.run.id) {
-      $("#experiment").value = next.run.experiment ?? "flowers";
-      showSettings(next.run.config);
-      prompts = {
-        system: next.initial.actor_instructions,
-        task: next.frames[0].world.goal,
-      };
-      $("#run-name").value = next.run.name;
+  ++refreshes;
+  try {
+    const version = ++refreshVersion;
+    const request = id;
+    const runs = (await api("runs")).filter((r) => r.flowers || r.experiment);
+    if (version !== refreshVersion || request !== id) return;
+    if (id && !runs.some((r) => r.id === id)) {
+      id = null;
+      data = null;
+      $("#run-name").value = "";
+      $("#context-limit").value = 256000;
+      $("#memory-mode").value = "rolling";
+      $("#action-format").value = "structured";
+      localStorage.removeItem("flower-run");
+      await loadSeed("bellwether");
+      if (version !== refreshVersion || id) return;
     }
-    data = next;
+    $("#runs").innerHTML =
+      '<option value="">New run — configure</option><optgroup label="Inspect saved run">' +
+      runs
+        .map(
+          (r) =>
+            `<option value="${esc(r.id)}">Inspect · ${esc(r.name)} · ${r.id.slice(0, 6)}</option>`,
+        )
+        .join("") +
+      "</optgroup>";
+    $("#runs").value = id || "";
+    if (id) {
+      const query = data?.run.id === id ? `?after_seq=${data.run.seq}&incremental=true` : "";
+      const next = await api(`runs/${id}${query}`);
+      if (version !== refreshVersion || request !== id) return;
+      if (next.unchanged) return;
+      if (data?.run.id === next.run.id && data.run.seq >= next.run.seq) return;
+      if (data?.run.id !== next.run.id) {
+        $("#experiment").value = next.run.experiment ?? "flowers";
+        showSettings(next.run.config);
+        prompts = {
+          system: next.initial.actor_instructions,
+          task: next.frames[0].world.goal,
+        };
+        $("#run-name").value = next.run.name;
+      }
+      if (next.incremental) {
+        if (data?.run.id !== next.run.id || data.run.seq !== next.from_seq) return;
+        data = {...data,...next,events:[...data.events,...next.events],frames:[...data.frames,...next.frames]};
+      } else { data = next; }
+    }
+    render();
+  } finally {
+    --refreshes;
   }
-  render();
 }
 async function create() {
   for (const key of settingIds)
@@ -409,6 +444,9 @@ async function create() {
     expansion_limit: 10,
     call_limit: bellwether ? 120 : 40,
     dollar_limit: 1,
+    context_limit_bytes: Number($("#context-limit").value),
+    memory: $("#memory-mode").value === "rolling" ? {recent_entries:12,max_summary_bytes:8000} : null,
+    structured_actions: $("#action-format").value === "structured",
   });
   id = r.id;
   data = null;
@@ -443,15 +481,18 @@ for (const key of ["system", "task"]) {
 $("#runs").onchange = () =>
   act(async () => {
     id = $("#runs").value || null;
+    data = null;
     if (!id) {
       $("#run-name").value = "";
+      $("#context-limit").value = 256000;
+      $("#memory-mode").value = "rolling";
+      $("#action-format").value = "structured";
       await loadSeed(
         $("#experiment").value === "records"
           ? "bellwether"
           : $("#experiment").value,
       );
     }
-    data = null;
     follow = true;
     $("#settings").open = true;
     localStorage.setItem("flower-run", id || "");
@@ -512,7 +553,10 @@ api("models")
     capabilities();
   });
 await refresh().catch(error);
+api("health").then((health) => {
+  $("#key-status").hidden = health.key_available;
+}).catch(error);
 if (!id) $("#settings").open = true;
 setInterval(() => {
-  if (!pending) refresh().catch(error);
+  if (!pending && !refreshes) refresh().catch(error);
 }, 1800);

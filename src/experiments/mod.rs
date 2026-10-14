@@ -1,6 +1,7 @@
 //! Experiment assumptions live here, outside the construction engine.
 pub mod bellwether;
 pub mod flowers;
+pub mod recall;
 pub mod records;
 use crate::{
     Action, Run, World,
@@ -17,6 +18,17 @@ pub enum Experiment {
     Flowers,
     Records,
     Bellwether,
+    Recall,
+    Institutions,
+}
+
+pub fn measure(run: &Run, events: &[crate::Event]) -> Value {
+    match run.experiment {
+        Some(Experiment::Recall) => recall::measure(run, events),
+        _ => {
+            json!({"kind":"unscored","note":"No general actor-success requirement. Apply the experiment's authored measurements."})
+        }
+    }
 }
 
 pub fn resolve(run: &Run, action: &Action) -> Result<Resolution> {
@@ -31,7 +43,12 @@ pub fn resolve(run: &Run, action: &Action) -> Result<Resolution> {
     }
     if action.kind != "http.request" {
         return Ok(
-            if tools::definitions()
+            if run
+                .world
+                .tools
+                .as_ref()
+                .map(|state| state.definitions.clone())
+                .unwrap_or_else(tools::definitions)
                 .as_array()
                 .unwrap()
                 .iter()
@@ -61,6 +78,8 @@ pub fn resolve(run: &Run, action: &Action) -> Result<Resolution> {
         Some(Experiment::Flowers) => flowers::directive(target),
         Some(Experiment::Records) => records::directive(target),
         Some(Experiment::Bellwether) => bellwether::directive(target),
+        Some(Experiment::Recall) => None,
+        Some(Experiment::Institutions) => None,
         None => None,
     };
     Ok(match directive {
@@ -84,6 +103,9 @@ pub fn resolve(run: &Run, action: &Action) -> Result<Resolution> {
     })
 }
 pub fn exists(world: &World, target: &str) -> bool {
+    if world.ontology.is_some() && crate::ontology::route(target).is_some() {
+        return true;
+    }
     if world.business.is_some() && bellwether::route(target).is_some_and(|p| !p.ends_with("/about"))
     {
         return true;
@@ -120,7 +142,9 @@ pub fn context(run: &Run, target: &str) -> Result<Value> {
             }
             Ok(json!(committed))
         }
-        None => anyhow::bail!("No experiment construction policy"),
+        None | Some(Experiment::Recall | Experiment::Institutions) => {
+            anyhow::bail!("No experiment construction policy")
+        }
     }
 }
 pub fn publish(world: &mut World, request: &Request, resource: &Resource) -> Result<()> {

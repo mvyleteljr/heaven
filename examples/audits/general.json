@@ -1,0 +1,130 @@
+{
+  "version": 1,
+  "budget_usd": 1.2,
+  "cases": [
+    {
+      "endpoint": "recall",
+      "name": "Archive handoff / full history",
+      "config": {
+        "demo": false,
+        "structured_actions": true,
+        "actor_model": "openai/gpt-4.1-mini",
+        "world_model": "openai/gpt-4.1-mini",
+        "provider": "openai",
+        "actor_settings": {
+          "provider": "openrouter",
+          "temperature": 0.3,
+          "max_tokens": 4096,
+          "reasoning_effort": null
+        },
+        "generator_settings": {
+          "provider": "openrouter",
+          "temperature": 0.3,
+          "max_tokens": 4096,
+          "reasoning_effort": null
+        },
+        "action_limit": 120,
+        "expansion_limit": 8,
+        "call_limit": 180,
+        "dollar_limit": 0.35,
+        "context_limit_bytes": 256000
+      }
+    },
+    {
+      "endpoint": "recall",
+      "name": "Archive handoff / rolling memory",
+      "config": {
+        "demo": false,
+        "structured_actions": true,
+        "actor_model": "openai/gpt-4.1-mini",
+        "world_model": "openai/gpt-4.1-mini",
+        "provider": "openai",
+        "actor_settings": {
+          "provider": "openrouter",
+          "temperature": 0.3,
+          "max_tokens": 4096,
+          "reasoning_effort": null
+        },
+        "generator_settings": {
+          "provider": "openrouter",
+          "temperature": 0.3,
+          "max_tokens": 4096,
+          "reasoning_effort": null
+        },
+        "action_limit": 120,
+        "expansion_limit": 8,
+        "call_limit": 180,
+        "dollar_limit": 0.35,
+        "context_limit_bytes": 256000,
+        "memory": {
+          "recent_entries": 4,
+          "max_summary_bytes": 8000
+        }
+      }
+    },
+    {
+      "endpoint": "records",
+      "name": "Records / dependent construction",
+      "config": {
+        "demo": false,
+        "structured_actions": true,
+        "actor_model": "openai/gpt-4.1-mini",
+        "world_model": "openai/gpt-4.1-mini",
+        "provider": "openai",
+        "actor_settings": {
+          "provider": "openrouter",
+          "temperature": 0.3,
+          "max_tokens": 4096,
+          "reasoning_effort": null
+        },
+        "generator_settings": {
+          "provider": "openrouter",
+          "temperature": 0.3,
+          "max_tokens": 4096,
+          "reasoning_effort": null
+        },
+        "action_limit": 120,
+        "expansion_limit": 8,
+        "call_limit": 180,
+        "dollar_limit": 0.25,
+        "context_limit_bytes": 256000,
+        "memory": {
+          "recent_entries": 4,
+          "max_summary_bytes": 8000
+        }
+      }
+    },
+    {
+      "endpoint": "flowers",
+      "name": "Flowers / resource reuse",
+      "config": {
+        "demo": false,
+        "structured_actions": true,
+        "actor_model": "openai/gpt-4.1-mini",
+        "world_model": "openai/gpt-4.1-mini",
+        "provider": "openai",
+        "actor_settings": {
+          "provider": "openrouter",
+          "temperature": 0.3,
+          "max_tokens": 4096,
+          "reasoning_effort": null
+        },
+        "generator_settings": {
+          "provider": "openrouter",
+          "temperature": 0.3,
+          "max_tokens": 4096,
+          "reasoning_effort": null
+        },
+        "action_limit": 120,
+        "expansion_limit": 8,
+        "call_limit": 180,
+        "dollar_limit": 0.25,
+        "context_limit_bytes": 256000,
+        "memory": {
+          "recent_entries": 4,
+          "max_summary_bytes": 8000
+        }
+      }
+    }
+  ]
+}

@@ -22,7 +22,7 @@ pub struct Workspace {
 pub fn path(value: &str) -> Result<String> {
     let relative = value.strip_prefix("/workspace/").unwrap_or(value);
     ensure!(
-        !relative.is_empty() && relative.len() <= 512,
+        !relative.is_empty() && relative.len() <= 512 && !relative.contains('\0'),
         "Invalid workspace path"
     );
     ensure!(
@@ -41,6 +41,23 @@ pub fn path(value: &str) -> Result<String> {
         .join("/");
     ensure!(!normalized.is_empty(), "Path must name a file or directory");
     Ok(normalized)
+}
+
+/// Exercise the same isolation path used by shell tools and hosted handlers.
+pub fn doctor() -> Result<Value> {
+    ensure!(
+        cfg!(target_os = "linux"),
+        "Shell isolation requires Linux. On macOS run scripts/dev up (Docker Desktop). Native host execution is never used."
+    );
+    let result = Workspace::default().exec(
+        "test ! -e /etc/passwd && test -z \"$OPENROUTER_API_KEY\" && test \"$(pwd)\" = /workspace && printf frontier-isolated",
+    )?;
+    ensure!(
+        result["exit_status"] == 0 && result["stdout"] == "frontier-isolated",
+        "Sandbox self-check failed: {}. Install bubblewrap, busybox-static, util-linux and coreutils and enable unprivileged user namespaces; use scripts/dev doctor for the Docker setup.",
+        result["stderr"]
+    );
+    Ok(json!({"ok":true,"sandbox":"bubblewrap","shell":"static BusyBox"}))
 }
 
 impl Workspace {
@@ -130,7 +147,10 @@ impl Workspace {
         .arg(root.path())
         .arg("/workspace")
         .args([
-            "--proc",
+            // No procfs is needed by the supported applets. An empty directory
+            // also works inside Docker's masked-proc environment, where mounting
+            // another procfs from a nested user namespace is denied.
+            "--dir",
             "/proc",
             "--dev",
             "/dev",

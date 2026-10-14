@@ -1,0 +1,28 @@
+{
+  "corpus": "harbor-contracts",
+  "title": "Authority and lifecycle conformance",
+  "constructs": ["required", "invariant", "where", "requires", "sets", "final"],
+  "world": [
+    {"id":"harbor","type":"Seller","fields":{}},
+    {"id":"competitor","type":"Seller","fields":{}},
+    {"id":"quay","type":"Buyer","fields":{}},
+    {"id":"anchor","type":"Buyer","fields":{}}
+  ],
+  "steps": [
+    {"execute":{"story":"Seller registers Agreement for Buyer","actor":"harbor","participants":{"Buyer":"quay"},"fields":{"priceCents":-1,"units":1},"mint":"invalid"},"expect":{"committed":false,"world":{"invalid":null}}},
+    {"execute":{"story":"Seller registers Agreement for Buyer","actor":"harbor","participants":{"Buyer":"quay"},"fields":{"priceCents":10000,"units":13},"mint":"invalid"},"expect":{"committed":false,"world":{"invalid":null}}},
+    {"execute":{"story":"Seller registers Agreement for Buyer","actor":"harbor","participants":{"Buyer":"quay"},"fields":{"priceCents":10000,"units":1},"mint":"agreement-1"},"expect":{"committed":true,"world":{"agreement-1":{"seller":"harbor","buyer":"quay","status":"proposed"}}}},
+    {"execute":{"story":"Buyer approves Agreement","actor":"harbor","object":"agreement-1"},"expect":{"committed":false,"world":{"agreement-1":{"status":"proposed"}}}},
+    {"execute":{"story":"Buyer approves Agreement","actor":"anchor","object":"agreement-1"},"expect":{"committed":false,"world":{"agreement-1":{"status":"proposed"}}}},
+    {"execute":{"story":"Buyer pays Agreement","actor":"quay","object":"agreement-1"},"expect":{"committed":false,"world":{"agreement-1":{"status":"proposed"}}}},
+    {"execute":{"story":"Buyer approves Agreement","actor":"quay","object":"agreement-1"},"expect":{"committed":true,"world":{"agreement-1":{"status":"authorized"}}}},
+    {"execute":{"story":"Seller delivers Agreement","actor":"competitor","object":"agreement-1"},"expect":{"committed":false,"world":{"agreement-1":{"status":"authorized"}}}},
+    {"execute":{"story":"Buyer accepts Agreement","actor":"quay","object":"agreement-1"},"expect":{"committed":false,"world":{"agreement-1":{"status":"authorized"}}}},
+    {"execute":{"story":"Seller delivers Agreement","actor":"harbor","object":"agreement-1"},"expect":{"committed":true,"world":{"agreement-1":{"status":"delivered"}}}},
+    {"execute":{"story":"Buyer pays Agreement","actor":"quay","object":"agreement-1"},"expect":{"committed":false,"world":{"agreement-1":{"status":"delivered"}}}},
+    {"execute":{"story":"Buyer accepts Agreement","actor":"quay","object":"agreement-1"},"expect":{"committed":true,"world":{"agreement-1":{"status":"accepted"}}}},
+    {"execute":{"story":"Buyer pays Agreement","actor":"quay","object":"agreement-1"},"expect":{"committed":true,"world":{"agreement-1":{"status":"paid"}}}},
+    {"execute":{"story":"Buyer pays Agreement","actor":"quay","object":"agreement-1"},"expect":{"committed":false,"world":{"agreement-1":{"status":"paid"}}}},
+    {"execute":{"story":"Buyer rejects Agreement","actor":"quay","object":"agreement-1"},"expect":{"committed":false,"world":{"agreement-1":{"status":"paid"}}}}
+  ]
+}

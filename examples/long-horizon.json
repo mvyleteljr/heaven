@@ -1,0 +1,29 @@
+{
+  "name": "Harbor Works \u00b7 rolling memory \u00b7 30-day audit",
+  "demo": false,
+  "structured_actions": true,
+  "actor_model": "openai/gpt-4.1-mini",
+  "world_model": "openai/gpt-4.1-mini",
+  "provider": "openai",
+  "actor_settings": {
+    "provider": "openrouter",
+    "temperature": 0.3,
+    "max_tokens": 4096,
+    "reasoning_effort": null
+  },
+  "generator_settings": {
+    "provider": "openrouter",
+    "temperature": 0.3,
+    "max_tokens": 4096,
+    "reasoning_effort": null
+  },
+  "action_limit": 240,
+  "expansion_limit": 40,
+  "call_limit": 350,
+  "dollar_limit": 2.0,
+  "context_limit_bytes": 64000,
+  "memory": {
+    "recent_entries": 12,
+    "max_summary_bytes": 8000
+  }
+}

@@ -40,6 +40,14 @@ async fn trajectory_controls_permissions_and_forks_over_http() -> Result<()> {
         tokio::time::sleep(Duration::from_millis(30)).await;
     }
     ensure!(ready, "Server failed to start");
+    // A second writer must not recover or pause the first server's runs.
+    let second = Command::new(env!("CARGO_BIN_EXE_frontier"))
+        .env("PORT", "0")
+        .env("FRONTIER_DB", dir.path().join("test.sqlite"))
+        .env_remove("OPENROUTER_API_KEY")
+        .output()?;
+    assert!(!second.status.success());
+    assert!(String::from_utf8_lossy(&second.stderr).contains("already in use"));
     let config = json!({"actor_model":"openai/gpt-4.1-mini","world_model":"openai/gpt-4.1-mini","provider":"openai","demo":true,"action_limit":2,"expansion_limit":2,"call_limit":2,"dollar_limit":0.1});
     let post = |path: String, body: Value| {
         client
@@ -74,6 +82,22 @@ async fn trajectory_controls_permissions_and_forks_over_http() -> Result<()> {
     assert_eq!(baseline["run"]["actions"], 1);
     assert_eq!(baseline["run"]["status"], "paused");
     let seq = baseline["run"]["seq"].as_u64().unwrap();
+    let unchanged: Value = client
+        .get(format!("{base}/runs/{id}?after_seq={seq}"))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    assert_eq!(unchanged, json!({"unchanged":true}));
+    let changed: Value = client
+        .get(format!("{base}/runs/{id}?after_seq=0"))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    assert_eq!(changed["run"]["seq"], seq);
     let fork: Value = post(format!("runs/{id}/fork"), json!({"seq":seq}))
         .send()
         .await?
@@ -211,6 +235,27 @@ async fn trajectory_controls_permissions_and_forks_over_http() -> Result<()> {
     assert_eq!(frames[5]["world"]["tools"]["elapsed_seconds"], 5);
     assert_eq!(result["observation"]["tools"].as_array().unwrap().len(), 10);
     let seq = frames[2]["event"]["seq"].as_u64().unwrap();
+    let delta: Value = client
+        .get(format!(
+            "{base}/runs/{fid}?after_seq={seq}&incremental=true"
+        ))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    assert_eq!(delta["incremental"], true);
+    assert_eq!(delta["from_seq"], seq);
+    assert_eq!(delta["run"], result["run"]);
+    assert_eq!(delta["frames"], json!(&frames[3..]));
+    assert!(
+        delta["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|e| e["seq"].as_u64().unwrap() > seq)
+    );
+    assert!(delta.get("initial").is_none());
     let branch: Value = post(format!("runs/{fid}/fork"), json!({"seq":seq}))
         .send()
         .await?

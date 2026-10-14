@@ -1,0 +1,222 @@
+{
+  "captured_at": "2026-10-14T04:11:25.431921+00:00",
+  "purpose": "Live harness and rolling-memory audit; not a controlled business-performance comparison",
+  "total_authorized_budget_usd": 2,
+  "runs": [
+    {
+      "id": "79294a3d-e89b-40c4-b726-6405c47aa9b1",
+      "name": "Harbor Works \u00b7 rolling memory \u00b7 30-day audit",
+      "status": "error",
+      "seq": 15,
+      "actions": 1,
+      "calls": 3,
+      "charged": 0.00327825,
+      "reserved": 0.0,
+      "expansions": 0,
+      "checkpoint_hash": "50b16164d199b7b2edeec881455dffaf6e04c1967faddffea39cf55f5f2427c4",
+      "actor_model": "openai/gpt-5.4-mini",
+      "generator_model": "openai/gpt-4.1-mini",
+      "actor_settings": {
+        "endpoint": "openai/flex",
+        "max_tokens": 4096,
+        "provider": "openrouter",
+        "reasoning_effort": "low",
+        "temperature": null
+      },
+      "dollar_limit": 2.0,
+      "action_limit": 240,
+      "structured_actions": false,
+      "memory_revisions": 0,
+      "memory_covered_entries": 0,
+      "transcript_entries": 1,
+      "inference_calls_by_role": {
+        "actor": 3
+      },
+      "business_elapsed_seconds": 60,
+      "contracts": 0,
+      "services": 0,
+      "ledger_entries": 0,
+      "errors": [
+        {
+          "seq": 5,
+          "timestamp": 1791949789,
+          "error": "trailing characters at line 3 column 1"
+        },
+        {
+          "seq": 15,
+          "timestamp": 1791949878,
+          "error": "trailing characters at line 3 column 1"
+        }
+      ],
+      "provider_errors": []
+    },
+    {
+      "id": "7614f767-24b1-44b4-91f3-149198cbd2b9",
+      "name": "Harbor Works \u00b7 structured actions + rolling memory",
+      "status": "error",
+      "seq": 9,
+      "actions": 0,
+      "calls": 2,
+      "charged": 0.000730875,
+      "reserved": 0.1,
+      "expansions": 0,
+      "checkpoint_hash": "aaf5a0f4c0b4ae852b201a71ee0a6851778ade892d8fb773f2f8deaf382148ca",
+      "actor_model": "openai/gpt-5.4-mini",
+      "generator_model": "openai/gpt-4.1-mini",
+      "actor_settings": {
+        "endpoint": "openai/flex",
+        "max_tokens": 4096,
+        "provider": "openrouter",
+        "reasoning_effort": "low",
+        "temperature": null
+      },
+      "dollar_limit": 1.99672175,
+      "action_limit": 240,
+      "structured_actions": true,
+      "memory_revisions": 0,
+      "memory_covered_entries": 0,
+      "transcript_entries": 0,
+      "inference_calls_by_role": {
+        "actor": 2
+      },
+      "business_elapsed_seconds": 0,
+      "contracts": 0,
+      "services": 0,
+      "ledger_entries": 0,
+      "errors": [
+        {
+          "seq": 5,
+          "timestamp": 1791950104,
+          "error": "OpenRouter returned HTTP 429. Inspect the response event; no automatic retry."
+        },
+        {
+          "seq": 9,
+          "timestamp": 1791950155,
+          "error": "trailing characters at line 3 column 1"
+        }
+      ],
+      "provider_errors": [
+        {
+          "seq": 4,
+          "status": 429,
+          "message": "OpenRouter could not verify available credits for this request in time. Retry shortly.",
+          "reason": null
+        }
+      ]
+    },
+    {
+      "id": "5815b7d8-94f6-4998-8f2b-df9a150de5f8",
+      "name": "Harbor Works \u00b7 4.1 Mini \u00b7 long-horizon audit",
+      "status": "error",
+      "seq": 587,
+      "actions": 92,
+      "calls": 102,
+      "charged": 0.07597999999999996,
+      "reserved": 0.2,
+      "expansions": 1,
+      "checkpoint_hash": "00344570e32e56c3967985478de38e071da12417059b445281c5dbc8b8723267",
+      "actor_model": "openai/gpt-4.1-mini",
+      "generator_model": "openai/gpt-4.1-mini",
+      "actor_settings": {
+        "endpoint": "openai",
+        "max_tokens": 4096,
+        "provider": "openrouter",
+        "reasoning_effort": null,
+        "temperature": 0.3
+      },
+      "dollar_limit": 1.895990875,
+      "action_limit": 240,
+      "structured_actions": true,
+      "memory_revisions": 6,
+      "memory_covered_entries": 78,
+      "transcript_entries": 92,
+      "inference_calls_by_role": {
+        "actor": 94,
+        "world": 1,
+        "memory": 7
+      },
+      "business_elapsed_seconds": 23160,
+      "contracts": 0,
+      "services": 0,
+      "ledger_entries": 0,
+      "errors": [
+        {
+          "seq": 240,
+          "timestamp": 1791950313,
+          "error": "Memory notes require 1\u20138 citations"
+        },
+        {
+          "seq": 439,
+          "timestamp": 1791950635,
+          "error": "OpenRouter returned HTTP 402. Inspect the response event; no automatic retry."
+        },
+        {
+          "seq": 587,
+          "timestamp": 1791951020,
+          "error": "OpenRouter returned HTTP 402. Inspect the response event; no automatic retry."
+        }
+      ],
+      "provider_errors": [
+        {
+          "seq": 438,
+          "status": 402,
+          "message": "This request would exceed your available credits given your current in-flight requests. Retry after in-flight requests settle, or add credits.",
+          "reason": "in_flight_budget_exhausted"
+        },
+        {
+          "seq": 586,
+          "status": 402,
+          "message": "This request would exceed your available credits given your current in-flight requests. Retry after in-flight requests settle, or add credits.",
+          "reason": "in_flight_budget_exhausted"
+        }
+      ]
+    }
+  ],
+  "validation": {
+    "rust_tests_passed": 42,
+    "web_tests_passed": 6,
+    "fmt": true,
+    "clippy_warnings_denied": true,
+    "linux_sandbox_doctor": true,
+    "after_strict_memory_schema_change": "10 binary tests and clippy all targets passed"
+  },
+  "limits": [
+    "Live runs stopped on provider or validation errors; the 240-action / 30-day target was not completed.",
+    "The final run was resumed across harness fixes; it is not a fixed-code scientific trial.",
+    "Memory citations establish source indices, not semantic truth; a deadline error was misinterpreted in a summary.",
+    "No customer contracts or deployed services were achieved in this live audit; separate deterministic sandbox tests cover the business cycle.",
+    "Provider errors retain conservative reservations because actual billing is uncertain."
+  ],
+  "total_charged_usd": 0.07998912499999997,
+  "total_uncertain_reserved_usd": 0.30000000000000004,
+  "charged_plus_reserved_usd": 0.37998912500000004,
+  "trace_interpretation": {
+    "run_id": "5815b7d8-94f6-4998-8f2b-df9a150de5f8",
+    "transcript_indices_are_zero_based": true,
+    "action_counts": {
+      "mail.list": 3,
+      "search": 39,
+      "http.request": 44,
+      "mail.send": 1,
+      "mail.read": 1,
+      "history.search": 4
+    },
+    "offer_submissions": 20,
+    "rejected_offer_submissions": 20,
+    "api_documentation_fetches": 0,
+    "exact_history_reads": 0,
+    "simulated_hours": 6.433333333333334,
+    "unchanged_summary_revisions": [
+      3,
+      4,
+      5
+    ],
+    "final_summary_items": 4,
+    "examples": {
+      "customer_reply_with_capabilities": 11,
+      "days_supplied_as_seconds": 18,
+      "invented_buyer_identity": 73
+    },
+    "interpretation": "The actor stagnated during API discovery. Mechanical memory publication and recoverability were exercised; semantic retention, generator breadth and long-horizon business competence were not established. Early harness feedback defects and mid-run fixes confound causal attribution."
+  }
+}

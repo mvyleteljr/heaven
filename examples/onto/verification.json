@@ -1,0 +1,17 @@
+{
+  "onto_revision": "0c92c82e35ca21b442669c7f5903bc6142ca92ad",
+  "source_sha256": "de302d13f8cc8db5f9fc3cd5021fb644915e48f52f25376df60a0fbffa33c2a9",
+  "round_trip": true,
+  "rejected_model_mutations": 3,
+  "trace_steps": 15,
+  "refusals_expected": 10,
+  "replay_ok": true,
+  "final_agreement": {
+    "priceCents": 10000,
+    "units": 1,
+    "seller": "harbor",
+    "buyer": "quay",
+    "status": "paid"
+  },
+  "boundary": "Reference workflow execution only. No ledger, hosting verification, demand generation, or Frontier runtime integration."
+}

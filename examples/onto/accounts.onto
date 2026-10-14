@@ -1,0 +1,38 @@
+project DistrictAccounts
+  @description "An institution's public simulated accounts. The actor is its authorized clerk, not a business operator."
+
+actor Clerk
+  @type organization
+  @affiliation internal
+  @access authenticated
+
+object Account
+  name: string @required
+  owner: Clerk @required
+  opening: money @required
+  incoming: money = sum of Transfer.amount via recipient
+  outgoing: money = sum of Transfer.amount via sender
+  balance: money = opening + incoming + outgoing * -1
+  @rule Account.balance is at least 0
+
+object Transfer
+  sender: Account @required
+  recipient: Account @required
+  amount: money @required
+  reference: string @required @unique
+  @rule Transfer.amount is more than 0
+
+story Accounting
+  Clerk creates Transfer from Account:sender to Account:recipient
+    where Account:sender.owner is Clerk
+    sets Transfer.sender to Account:sender
+    sets Transfer.recipient to Account:recipient
+
+seed Clerk
+  name: "Ada"
+  name: "Visitor"
+
+seed Account
+  name: "Operating", owner: "Ada", opening: 100.00
+  name: "Reserve", owner: "Ada", opening: 50.00
+  name: "External", owner: "Visitor", opening: 25.00

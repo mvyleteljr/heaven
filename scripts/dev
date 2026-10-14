@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+case "${1:-up}" in
+  up) docker compose up --build --force-recreate -d --wait --wait-timeout 600 ;;
+  down) docker compose down ;;
+  logs) docker compose logs -f ;;
+  check)
+    docker compose build
+    docker compose run --rm --no-deps -e OPENROUTER_API_KEY= frontier sh -ec '
+      cargo fmt --check
+      cargo test --locked
+      cargo clippy --locked --all-targets -- -D warnings
+      node --check web/app.js
+      node --test tests/web.test.mjs
+      cargo run --locked -- doctor
+    '
+    ;;
+  doctor) docker compose run --rm --no-deps -e OPENROUTER_API_KEY= frontier cargo run --locked -- doctor ;;
+  check-onto) docker compose run --rm --no-deps -e OPENROUTER_API_KEY= frontier cargo test --locked --test ontology -- --ignored ;;
+  demo) docker compose run --rm --no-deps -e OPENROUTER_API_KEY= -e FRONTIER_DB=/tmp/demo.sqlite frontier cargo run --locked -- demo ;;
+  *) echo 'Usage: scripts/dev {up|down|logs|check|doctor|demo|check-onto}' >&2; exit 2 ;;
+esac

@@ -432,7 +432,9 @@ impl State {
                 }
                 ensure!(
                     p.deadline >= now + 2 * DAY && p.deadline <= HORIZON,
-                    "Deadline must allow authorization and validation within 30 days"
+                    "deadline is elapsed seconds, not days: must be between {} and {} to allow authorization and validation within 30 days. See GET /api.",
+                    now + 2 * DAY,
+                    HORIZON
                 );
                 let offer = Offer {
                     id: format!("offer-{}", self.offers.len() + 1),

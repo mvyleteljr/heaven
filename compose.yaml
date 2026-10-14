@@ -1,0 +1,38 @@
+services:
+  frontier:
+    build: .
+    init: true
+    # Bubblewrap creates its own user/mount/network/PID namespaces. Docker's
+    # default profiles block these operations, even for an unprivileged user.
+    # No privileged container, host network, devices, or Docker socket are used.
+    security_opt:
+      - seccomp=unconfined
+      - apparmor=unconfined
+    cap_drop: [ALL]
+    pids_limit: 256
+    mem_limit: 2g
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    ports:
+      - "127.0.0.1:${PORT:-3000}:3000"
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3000
+      FRONTIER_DB: /data/frontier.sqlite
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      FRONTIER_ONTO_RUNTIME: /app/data/onto-runtime.cjs
+    volumes:
+      - .:/app:ro
+      - target:/target
+      - data:/data
+      - registry:/usr/local/cargo/registry
+    healthcheck:
+      test: [CMD, curl, --fail, --silent, http://127.0.0.1:3000/api/health]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 120s
+volumes:
+  target:
+  data:
+  registry:

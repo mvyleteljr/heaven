@@ -1,0 +1,50 @@
+project HarborContracts
+  @description "A bounded contract lifecycle for generated business worlds. Payment here is a workflow event, not a bank transfer."
+
+actor Seller
+  @type organization
+  @affiliation internal
+  @access authenticated
+  agreements: Agreement[]
+
+actor Buyer
+  @type organization
+  @affiliation external
+  @access authenticated
+  agreements: Agreement[]
+
+object Agreement
+  seller: Seller @required
+  buyer: Buyer @required
+  priceCents: int @required
+  units: int @required
+  status: proposed | authorized | delivered | accepted | paid @final | rejected @final
+  @rule Agreement.priceCents is more than 0
+  @rule Agreement.units is more than 0
+  @rule Agreement.units is at most 12
+
+story Contracting
+  Seller registers Agreement for Buyer
+    sets Agreement.seller to Seller
+    sets Agreement.buyer to Buyer
+    sets Agreement.status to "proposed"
+  Buyer approves Agreement
+    where Agreement.buyer is Buyer
+    requires Agreement.status is "proposed"
+    sets Agreement.status to "authorized"
+  Buyer rejects Agreement
+    where Agreement.buyer is Buyer
+    requires Agreement.status is "proposed"
+    sets Agreement.status to "rejected"
+  Seller delivers Agreement
+    where Agreement.seller is Seller
+    requires Agreement.status is "authorized"
+    sets Agreement.status to "delivered"
+  Buyer accepts Agreement
+    where Agreement.buyer is Buyer
+    requires Agreement.status is "delivered"
+    sets Agreement.status to "accepted"
+  Buyer pays Agreement
+    where Agreement.buyer is Buyer
+    requires Agreement.status is "accepted"
+    sets Agreement.status to "paid"

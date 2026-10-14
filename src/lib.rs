@@ -1,5 +1,5 @@
 use anyhow::{Result, bail, ensure};
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -7,10 +7,13 @@ use std::{
     collections::BTreeMap,
     time::{SystemTime, UNIX_EPOCH},
 };
+pub mod audit;
 pub mod business;
 pub mod construction;
 pub mod experiments;
 pub mod hosting;
+pub mod memory;
+pub mod ontology;
 pub use experiments::flowers;
 pub mod tools;
 pub mod workspace;
@@ -43,6 +46,8 @@ pub struct Document {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct World {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ontology: Option<ontology::State>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub business: Option<business::State>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hosting: Option<hosting::State>,
@@ -60,6 +65,7 @@ pub struct World {
 impl Default for World {
     fn default() -> Self {
         Self {
+            ontology: None,
             business: None,
             hosting: None,
             tools: None,
@@ -78,7 +84,7 @@ impl Default for World {
 impl World {
     pub fn observation(&self) -> Value {
         if let Some(state) = &self.tools {
-            return json!({"task":self.goal,"tools":state.definitions,"tool_policy":state.policy,"history":self.transcript});
+            return json!({"task":self.goal,"tools":state.definitions,"tool_policy":state.policy,"elapsed_seconds":state.elapsed_seconds,"history":self.transcript});
         }
         if self.flowers.is_some() {
             return json!({"task":self.goal,"tools":flowers::TOOLS,"history":self.transcript});
@@ -248,7 +254,7 @@ impl ActorSettings {
         }
         request["max_tokens"] = json!(self.max_tokens);
         if let Some(effort) = &self.reasoning_effort {
-            request["reasoning"] = json!({"effort":effort});
+            request["reasoning"] = json!({"effort":effort,"exclude":true});
         }
         request["provider"]["only"] = json!([self.endpoint]);
     }
@@ -256,6 +262,16 @@ impl ActorSettings {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Config {
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub structured_actions: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory: Option<memory::Policy>,
+    // Omit the legacy default to preserve existing checkpoint hashes.
+    #[serde(
+        default = "legacy_context_limit",
+        skip_serializing_if = "is_legacy_context_limit"
+    )]
+    pub context_limit_bytes: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub actor_system_prompt: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -274,9 +290,19 @@ pub struct Config {
     pub demo: bool,
 }
 
+fn legacy_context_limit() -> usize {
+    40_000
+}
+fn is_legacy_context_limit(value: &usize) -> bool {
+    *value == legacy_context_limit()
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
+            structured_actions: false,
+            memory: None,
+            context_limit_bytes: legacy_context_limit(),
             actor_system_prompt: None,
             actor_user_prompt: None,
             generator_settings: None,
@@ -294,6 +320,21 @@ impl Default for Config {
 }
 impl Config {
     pub fn validate(&self) -> Result<()> {
+        ensure!(
+            !self.structured_actions || self.actor_settings.is_some(),
+            "Structured actions require explicit actor settings for endpoint validation"
+        );
+        if let Some(memory) = &self.memory {
+            memory.validate()?;
+            ensure!(
+                self.context_limit_bytes >= 64_000,
+                "Memory requires at least 64000 context bytes"
+            );
+        }
+        ensure!(
+            (40_000..=1_048_576).contains(&self.context_limit_bytes),
+            "Context byte limit must be 40000–1048576"
+        );
         if let Some(settings) = &self.generator_settings {
             settings.validate()?;
         }
@@ -301,11 +342,11 @@ impl Config {
             settings.validate()?;
         }
         ensure!(
-            (1..=100).contains(&self.action_limit),
-            "Action limit must be 1–100"
+            (1..=1000).contains(&self.action_limit),
+            "Action limit must be 1–1000"
         );
         ensure!(
-            self.expansion_limit <= 20 && (1..=120).contains(&self.call_limit),
+            self.expansion_limit <= 100 && (1..=1500).contains(&self.call_limit),
             "Invalid generation/call limit"
         );
         ensure!(
@@ -324,6 +365,8 @@ impl Config {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Run {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory: Option<memory::State>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub experiment: Option<experiments::Experiment>,
     pub id: String,
@@ -346,6 +389,7 @@ impl Run {
     pub fn new(config: Config) -> Result<Self> {
         config.validate()?;
         Ok(Self {
+            memory: None,
             experiment: None,
             id: uuid::Uuid::new_v4().to_string(),
             name: "Baseline".into(),
@@ -369,6 +413,9 @@ impl Run {
         // Do not change the hash format of preserved legacy checkpoints.
         if let Some(experiment) = &self.experiment {
             state["experiment"] = json!(experiment);
+        }
+        if let Some(memory) = &self.memory {
+            state["memory"] = json!(memory);
         }
         format!("{:x}", Sha256::digest(serde_json::to_vec(&state).unwrap()))
     }
@@ -460,6 +507,25 @@ impl Store {
             .map(|s| Ok(serde_json::from_str(&s)?))
             .collect()
     }
+    /// Sidebar polling must not deserialize every experiment's workspace/history.
+    pub fn summaries(&self) -> Result<Vec<Value>> {
+        let mut statement = self.conn.prepare("SELECT id, json_extract(state,'$.name'), json_extract(state,'$.status'), json_extract(state,'$.config.demo'), json_extract(state,'$.parent'), json_type(state,'$.world.flowers') = 'object', json_extract(state,'$.experiment') FROM runs ORDER BY rowid DESC")?;
+        let rows = statement.query_map([], |row| {
+            Ok(json!({"id":row.get::<_,String>(0)?, "name":row.get::<_,String>(1)?, "status":row.get::<_,String>(2)?, "demo":row.get::<_,bool>(3)?, "parent":row.get::<_,Option<String>>(4)?, "flowers":row.get::<_,Option<bool>>(5)?.unwrap_or(false), "experiment":row.get::<_,Option<String>>(6)?}))
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+    pub fn sequence(&self, id: &str) -> Result<u64> {
+        let seq: i64 = self.conn.query_row(
+            "SELECT json_extract(state,'$.seq') FROM runs WHERE id=?",
+            [id],
+            |row| row.get(0),
+        )?;
+        Ok(u64::try_from(seq)?)
+    }
+    pub fn has_active(&self) -> Result<bool> {
+        Ok(self.conn.query_row("SELECT EXISTS(SELECT 1 FROM runs WHERE json_extract(state,'$.busy')=1 OR json_extract(state,'$.status')='running')", [], |row| row.get(0))?)
+    }
     pub fn commit(
         &mut self,
         run: &mut Run,
@@ -479,6 +545,18 @@ impl Store {
         };
         let state = serde_json::to_string(&next)?;
         let tx = self.conn.transaction()?;
+        let current: Option<String> = tx
+            .query_row("SELECT state FROM runs WHERE id=?", [&next.id], |r| {
+                r.get(0)
+            })
+            .optional()?;
+        match current {
+            Some(current) => ensure!(
+                serde_json::from_str::<Run>(&current)?.seq == run.seq,
+                "Stale run state; reload before committing"
+            ),
+            None => ensure!(run.seq == 0, "Missing run history"),
+        }
         tx.execute("INSERT INTO runs(id,state) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET state=excluded.state", params![next.id,state])?;
         tx.execute(
             "INSERT INTO events(run,seq,event,state) VALUES(?,?,?,?)",
@@ -494,11 +572,14 @@ impl Store {
         Ok(())
     }
     pub fn events(&self, id: &str) -> Result<Vec<Event>> {
+        self.events_after(id, 0)
+    }
+    pub fn events_after(&self, id: &str, seq: u64) -> Result<Vec<Event>> {
         let mut stmt = self
             .conn
-            .prepare("SELECT event FROM events WHERE run=? ORDER BY seq")?;
+            .prepare("SELECT event FROM events WHERE run=? AND seq>? ORDER BY seq")?;
         let strings = stmt
-            .query_map([id], |r| r.get::<_, String>(0))?
+            .query_map(params![id, i64::try_from(seq)?], |r| r.get::<_, String>(0))?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         strings
             .into_iter()
@@ -516,10 +597,13 @@ impl Store {
         Ok(run)
     }
     pub fn frames(&self, id: &str) -> Result<Vec<Value>> {
+        self.frames_after(id, 0)
+    }
+    pub fn frames_after(&self, id: &str, seq: u64) -> Result<Vec<Value>> {
         let mut stmt = self
             .conn
-            .prepare("SELECT event,state FROM events WHERE run=? ORDER BY seq")?;
-        let rows = stmt.query_map([id], |r| {
+            .prepare("SELECT event,state FROM events WHERE run=? AND seq>? AND json_extract(event,'$.kind') IN ('seed','fork','outcome','expansion','denied','error','intervention','recovery') ORDER BY seq")?;
+        let rows = stmt.query_map(params![id, i64::try_from(seq)?], |r| {
             Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
         })?;
         let mut frames = vec![];
@@ -539,7 +623,7 @@ impl Store {
             .contains(&event.kind.as_str())
             {
                 let run: Run = serde_json::from_str(&state)?;
-                frames.push(json!({"event":event,"world":run.world}));
+                frames.push(json!({"event":event,"world":run.world,"memory":run.memory}));
             }
         }
         Ok(frames)

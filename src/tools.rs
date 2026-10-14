@@ -78,6 +78,19 @@ pub fn definitions() -> Value {
 #[derive(Debug, Deserialize)]
 #[serde(tag = "kind", content = "inputs", deny_unknown_fields)]
 enum Call {
+    #[serde(rename = "history.read")]
+    HistoryRead {
+        index: usize,
+        #[serde(default)]
+        offset: usize,
+        limit: Option<usize>,
+    },
+    #[serde(rename = "history.search")]
+    HistorySearch {
+        query: String,
+        #[serde(default)]
+        cursor: usize,
+    },
     #[serde(rename = "search")]
     Search { query: String },
     #[serde(rename = "http.request")]
@@ -196,7 +209,15 @@ pub fn call(kind: &str, inputs: Value) -> Action {
 
 pub use crate::experiments::flowers::request as florist_request;
 pub fn validate_action(action: &Action) -> Result<()> {
-    parse(action).map(|_| ())
+    let parsed = parse(action)?;
+    if let Call::Http { url, .. } = parsed {
+        let url = reqwest::Url::parse(&url)?;
+        ensure!(
+            ["http", "https"].contains(&url.scheme()),
+            "Only HTTP(S) URLs are supported"
+        );
+    }
+    Ok(())
 }
 fn parse(action: &Action) -> Result<Call> {
     ensure!(
@@ -249,6 +270,17 @@ pub fn advance_time(world: &mut World, seconds: u64) {
 }
 pub fn apply(world: &mut World, action: &Action) -> Result<Value> {
     ensure!(!world.finished, "Run has finished");
+    advance_action_time(world, action);
+    if world.finished {
+        return Ok(
+            json!({"notice":"The 30-day operating period has ended. No further action was executed.","elapsed_seconds":crate::business::HORIZON}),
+        );
+    }
+    execute(world, action, parse(action)?)
+}
+
+/// Construction failures consume the same world time as ordinary actions.
+pub fn advance_action_time(world: &mut World, action: &Action) {
     let parsed = parse(action);
     let mut elapsed = match &parsed {
         Ok(Call::Wait { seconds }) if *seconds <= 604800 => *seconds,
@@ -272,12 +304,32 @@ pub fn apply(world: &mut World, action: &Action) -> Result<Value> {
         && world.tools.as_ref().unwrap().elapsed_seconds >= crate::business::HORIZON
     {
         world.finished = true;
-        return Ok(
-            json!({"notice":"The 30-day operating period has ended. No further action was executed.","elapsed_seconds":crate::business::HORIZON}),
+    }
+}
+
+fn execute(world: &mut World, action: &Action, parsed: Call) -> Result<Value> {
+    if action.kind.starts_with("history.") {
+        ensure!(
+            world
+                .tools
+                .as_ref()
+                .unwrap()
+                .definitions
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|d| d["name"] == action.kind),
+            "History tools are not enabled for this run"
         );
     }
     let state = world.tools.as_mut().unwrap();
-    match parsed? {
+    match parsed {
+        Call::HistoryRead {
+            index,
+            offset,
+            limit,
+        } => crate::memory::read(world, index, offset, limit.unwrap_or(8192)),
+        Call::HistorySearch { query, cursor } => crate::memory::search(world, &query, cursor),
         Call::Search { query } => {
             let found: Vec<_> = state
                 .public_resources
@@ -314,6 +366,9 @@ pub fn apply(world: &mut World, action: &Action) -> Result<Value> {
                 return Ok(response);
             }
             if let Some(response) = crate::experiments::bellwether::http(world, action)? {
+                return Ok(response);
+            }
+            if let Some(response) = crate::ontology::http(world, action)? {
                 return Ok(response);
             }
             if let Some(resource) = world

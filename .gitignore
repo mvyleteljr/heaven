@@ -4,3 +4,5 @@
 /.amp/portals/
 .env
 *.sqlite*
+__pycache__/
+*.pyc

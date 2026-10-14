@@ -159,3 +159,96 @@ fn dependent_construction_reuse_branch_and_reopen_preserve_commitments() -> Resu
     assert_eq!(restored.world.apply(&action("ledger"))?, first);
     Ok(())
 }
+
+#[test]
+fn mutation_matrix_rejects_proposals_across_experiments_and_preserves_private_context() -> Result<()>
+{
+    use frontier::experiments::{bellwether, flowers};
+    for (experiment, world, target, data) in [
+        (
+            Experiment::Records,
+            records::seed(),
+            "https://records.local/ledger",
+            ledger(),
+        ),
+        (
+            Experiment::Flowers,
+            frontier::World::sandbox(),
+            "https://willow-and-stem.local/catalog",
+            flowers::fixture("catalog"),
+        ),
+        (
+            Experiment::Bellwether,
+            bellwether::seed(),
+            "https://bellwether.local/organizations/quay/about",
+            json!({"title":"Quay Hall","text":"Venue with an existing public directory."}),
+        ),
+    ] {
+        let mut run = Run::new(Config::default())?;
+        run.experiment = Some(experiment);
+        run.world = world;
+        run.world.goal = "PRIVATE_OBJECTIVE_SENTINEL".into();
+        run.world
+            .transcript
+            .push(json!({"result":"PRIVATE_HISTORY_SENTINEL"}));
+        run.world
+            .tools
+            .as_mut()
+            .unwrap()
+            .workspace
+            .write("private.txt", "PRIVATE_FILE_SENTINEL")?;
+        let action = tools::call("http.request", json!({"method":"GET","url":target}));
+        let request = direct(&run, &action)?.request.unwrap();
+        let serialized = serde_json::to_string(&request)?;
+        for private in [
+            "PRIVATE_OBJECTIVE_SENTINEL",
+            "PRIVATE_HISTORY_SENTINEL",
+            "PRIVATE_FILE_SENTINEL",
+        ] {
+            assert!(!serialized.contains(private), "{private}");
+        }
+        let mut good = proposal(&request, data);
+        if let Outcome::Proposed { resources } = &mut good.result {
+            resources[0].functionality = request.directive.requirements["functionality"]
+                .as_str()
+                .unwrap()
+                .into();
+        }
+        let good = serde_json::to_value(good)?;
+        for (pointer, value) in [
+            ("/basis/world_id", json!("another-world")),
+            ("/basis/revision", json!("stale")),
+            (
+                "/result/resources/0/target",
+                json!("https://attacker.local/new"),
+            ),
+            ("/result/resources/0/interface/method", json!("POST")),
+            (
+                "/result/resources/0/functionality",
+                json!("execute.generated.code"),
+            ),
+            ("/result/resources/0/dependencies", json!([])),
+            ("/result/resources/0/initial_state", json!({})),
+            ("/result/resources", json!([])),
+        ] {
+            let mut bad = good.clone();
+            *bad.pointer_mut(pointer).unwrap() = value;
+            let before = run.checkpoint_hash();
+            assert!(
+                publish(&mut run, &request, &serde_json::from_value(bad)?).is_err(),
+                "{target} accepted {pointer}"
+            );
+            assert_eq!(run.checkpoint_hash(), before);
+        }
+        publish(&mut run, &request, &serde_json::from_value(good.clone())?)?;
+        assert!(direct(&run, &action)?.request.is_none());
+        let first = run.world.apply(&action)?;
+        for _ in 0..20 {
+            assert_eq!(run.world.apply(&action)?, first);
+        }
+        assert!(publish(&mut run, &request, &serde_json::from_value(good)?).is_err());
+        let branch = run.fork(0);
+        assert!(direct(&branch, &action)?.request.is_none());
+    }
+    Ok(())
+}

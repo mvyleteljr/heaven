@@ -1,0 +1,40 @@
+{
+  "name": "Institution / authored transfer rules",
+  "config": {
+    "demo": false,
+    "structured_actions": true,
+    "actor_model": "openai/gpt-4.1-mini",
+    "world_model": "openai/gpt-4.1-mini",
+    "provider": "openai",
+    "actor_settings": {
+      "provider": "openrouter",
+      "temperature": 0.3,
+      "max_tokens": 4096,
+      "reasoning_effort": null
+    },
+    "generator_settings": {
+      "provider": "openrouter",
+      "temperature": 0.3,
+      "max_tokens": 4096,
+      "reasoning_effort": null
+    },
+    "action_limit": 30,
+    "expansion_limit": 8,
+    "call_limit": 180,
+    "dollar_limit": 0.25,
+    "context_limit_bytes": 256000,
+    "memory": {
+      "recent_entries": 4,
+      "max_summary_bytes": 8000
+    },
+    "actor_user_prompt": "You are the authorized clerk for the institution at https://institutions.local/. Move $25 from its Operating account to Reserve, then verify the balances and report what happened. You may act only as the configured caller and must not debit accounts you do not control."
+  },
+  "institution": {
+    "source": {
+      "accounts.onto": "project DistrictAccounts\n  @description \"An institution's public simulated accounts. The actor is its authorized clerk, not a business operator.\"\n\nactor Clerk\n  @type organization\n  @affiliation internal\n  @access authenticated\n\nobject Account\n  name: string @required\n  owner: Clerk @required\n  opening: money @required\n  incoming: money = sum of Transfer.amount via recipient\n  outgoing: money = sum of Transfer.amount via sender\n  balance: money = opening + incoming + outgoing * -1\n  @rule Account.balance is at least 0\n\nobject Transfer\n  sender: Account @required\n  recipient: Account @required\n  amount: money @required\n  reference: string @required @unique\n  @rule Transfer.amount is more than 0\n\nstory Accounting\n  Clerk creates Transfer from Account:sender to Account:recipient\n    where Account:sender.owner is Clerk\n    sets Transfer.sender to Account:sender\n    sets Transfer.recipient to Account:recipient\n\nseed Clerk\n  name: \"Ada\"\n  name: \"Visitor\"\n\nseed Account\n  name: \"Operating\", owner: \"Ada\", opening: 100.00\n  name: \"Reserve\", owner: \"Ada\", opening: 50.00\n  name: \"External\", owner: \"Visitor\", opening: 25.00\n"
+    },
+    "actor": "Clerk:Ada",
+    "epoch": "2026-01-01T00:00:00Z",
+    "public_facts": true
+  }
+}
