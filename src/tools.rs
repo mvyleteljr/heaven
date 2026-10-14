@@ -253,6 +253,12 @@ pub(crate) fn http(status: u16, body: Value) -> Value {
     json!({"status":status,"headers":{"content-type":"application/json"},"body":body,"truncated":truncated})
 }
 pub fn advance_time(world: &mut World, seconds: u64) -> Result<()> {
+    // This authored review probes a single synthetic checkpoint. Advancing its
+    // clock would expire the seeded verification required by Harbor's Stories.
+    // Institutional facts still change only through executed Onto commands.
+    if world.harbor_review {
+        return Ok(());
+    }
     if world.harbor_onto {
         let mut candidate = world.clone();
         let target = candidate
@@ -302,6 +308,9 @@ pub fn apply(world: &mut World, action: &Action) -> Result<Value> {
             crate::story_executor::allows(world, action),
             "Tool is not enabled for this run"
         );
+    }
+    if crate::story_executor::enabled(world) {
+        crate::story_executor::check_progress(world, action)?;
     }
     advance_action_time(world, action)?;
     if action.kind.starts_with("onto.") {

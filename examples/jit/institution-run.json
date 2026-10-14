@@ -3,18 +3,18 @@
   "config": {
     "demo": false,
     "structured_actions": true,
-    "actor_model": "openai/gpt-4.1-mini",
-    "world_model": "openai/gpt-4.1-mini",
+    "actor_model": "openai/gpt-6.1-sol",
+    "world_model": "openai/gpt-6.1-sol",
     "provider": "openai",
     "actor_settings": {
       "provider": "openrouter",
-      "temperature": 0.3,
+      "temperature": null,
       "max_tokens": 4096,
       "reasoning_effort": null
     },
     "generator_settings": {
       "provider": "openrouter",
-      "temperature": 0.3,
+      "temperature": null,
       "max_tokens": 4096,
       "reasoning_effort": null
     },

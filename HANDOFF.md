@@ -142,38 +142,93 @@ tests pass after the final UI edits. Browser checks confirm the live blocked/red
 publication/focus and completed/green states, same action identity and no console
 errors. Optional authored Onto suites were not rerun for these presentation edits.
 
+### Direct Harbor Story reviews and bounded review execution
+
+**Harbor Works · Story review** (`harbor_review`) and **Harbor Works · Story
+review v2** (`harbor_review_v2`) are separate authored profiles in both UI
+selectors. Open `/run?experiment=harbor_review_v2` and select Run to create and
+start a fresh execution. Selecting a template alone performs no inference.
+Both profiles expose only `onto.execute` and `finish`. The original Rust Harbor,
+Onto Harbor business adapter, generated company and missing-domain demo remain
+available with their existing workflows.
+
+Harbor review supplies one canonical Ontolang model, current facts, declared
+agent state and an indexed command ledger each turn. Updated records use exact
+before/after field differences; complete receipts and history remain saved.
+No repeated inspection or paid memory summary is needed. Only Onto commands
+change institutional facts. The model has fourteen firms; service verification
+and prior customer approvals are synthetic starting assumptions. Caller identity
+is fixed to Business:Harbor Works, source is fixed, and the clock remains January
+10, 2026. There are no automatic counterparties, arbitrary source migration or
+real software-verification claims.
+
+V2 uses `examples/onto/harbor-works-review-v2.onto`, leaving the original Harbor
+model unchanged. Three Agreement invariants require a delivery timestamp for
+delivered/accepted/paid agreements and constrain supplied timestamps to creation
+time through `now`. Delivery supplies `deliveredAt` through `fields_json`; this
+is a validated caller input, not an automatic clock stamp. A deterministic test
+reproduces the original missing-timestamp failure and verifies v2's refusals and
+a later buyer return. The changed buyer and clock exist only in that test.
+
+Before inference, authored reviews reserve room for reporting using the existing
+conservative reservation formula. Near the dollar/action/call limit, only
+`finish` is offered. If even reporting cannot fit, the host saves a deterministic
+partial report without a new model call or fabricated actor action. Both paths
+record `review_report` checkpoints alongside upstream's `action_blocked` and
+`action_ready` checkpoints. Provider failures still stop with their existing
+accounting; this change does not add retry/fallback for unavailable Flex calls.
+
+New draft defaults use `openai/gpt-6.1-sol` for actor and generator, omit
+temperature, and allow 4,096 output tokens. Sol requests without explicit settings
+use the same compatible defaults; other saved model choices retain their legacy
+request shape. Explicit template settings (including
+the live expansion demo) and saved run settings are preserved. Harbor review's
+default ceiling is $1 with 60 actions and 90 calls; source additions are disabled.
+
+The earlier local live v2 check `0fae1030-bbf7-4d02-b62b-b8f7f5645225` finished
+19 Story commands (4 committed, 15 refused) and one finish for $0.33684375,
+without inspection or business tools. Its report demonstrated unilateral
+buyer-fund reservations at proposal creation and caller-controlled historical
+proposal metadata, not an authorization/payment bypass. That evidence predates
+integration with upstream's declared agent state; no additional paid run was
+started to prepare this branch.
+
 ### Optional Onto Story review
 
-The separate **Onto · Story review** template exposes `onto.inspect`,
-`onto.execute`, `onto.expand`, and `finish` (plus history recall when rolling
-memory is enabled). It uses the existing Onto compiler, command receipts and
-module publication pipeline. Shell, general HTTP, file and hosting tools are
-not available in this profile, including for legacy actor output. Existing
-templates and saved runs retain their original interfaces.
+**Onto · Story review** now starts with the authored, compiled `repair` module
+in `examples/onto/review-repair.onto`. Its five Stories create, approve and complete
+requests and change the policy limit, so an actor can execute before attempting
+generation. Costs are integer authorization units, not money. The model does
+not implement a cash ledger or separation of duties.
 
-`onto.execute` takes the exact Story sentence, a stable `command_id`, optional
-module/object/about identifiers, and optional `participants_json` / `fields_json`
-JSON object strings. The runtime fixes caller identity and returns committed or
-refused results; observations include the Story, command ID and actual fact
-changes. Replaying an identical command ID returns its receipt without repeating
-the effect. The UI timeline names the executed Story.
+The profile exposes `onto.inspect`, `onto.execute`, optional `onto.expand`, and
+`finish`. After three inspections/history reads without a new accepted or refused
+Story receipt, only execution and finish remain available; replaying an existing
+receipt does not reset this allowance. Invalid arguments to recognized tools
+become corrective observations, with three consecutive invalid actions stopping
+the run. Malformed envelopes, unknown tools and provider failures remain terminal.
+Omitted, null or blank optional JSON maps mean `{}`; nonempty malformed input is
+still rejected. `about` is an instance ID only for Stories declaring that context,
+never review notes. Caller identity and Onto rule enforcement remain fixed.
 
-The initial review foundation has no operational Stories. `onto.expand` requests
-a capability under the editable generation brief, then the actor inspects and
-executes the compiled module. Generation publishes Ontolang source and initial
-facts; subsequent institutional transitions execute through Onto. The host still
-owns orchestration, clock, publication validation and inference accounting.
-Modules have isolated mutable state and an immutable shared foundation. This
-does not implement cross-module transactions or arbitrary source migration, and
-a generated addition cannot repair an existing module. Saving is free and paused;
-running the actor/generator uses the configured inference budget. No paid review
-trial has been performed as part of this addition.
+Optional additions receive up to two compiler-feedback repairs by default,
+within saved call/dollar limits. A failed module cannot be requested repeatedly;
+observations expose remaining attempts, slots and failed names. Existing modules
+remain executable after a generation failure. Authored repair seeding and
+publication share compiler, immutable-foundation and declared-agent-state checks.
+The repair module explicitly declares no additional agent-state fields. Generated
+modules still require explicit declarations when their foundation does, and must
+bind valid owned local records. Additions cannot rewrite existing modules.
 
-Verification passed: `scripts/dev check`, `scripts/dev check-onto`, and
-`scripts/dev check-jit`, including direct execution/refusal, idempotent replay,
-state persistence, disabled-tool enforcement, paused UI setup, and the mock
-actor-to-generator-to-Onto pipeline. These are deterministic checks, not evidence
-of autonomous live-review quality.
+Regression coverage includes exact evidence projection, input correction and
+loop stopping, timestamp validation, authority/refusal, receipt replay,
+persistence, fixed-profile HTTP validation, reporting limits, and both UI
+selectors. The branch retains upstream's declared-agent-state, missing-domain
+workflow, source tab and animation tests. Integration against `d45a500` passes
+`scripts/dev check`, `scripts/dev check-onto`, and `scripts/dev check-jit`,
+including 84 JavaScript tests, seven direct Story runtime tests and nine mocked
+actor/compiler pipeline tests. Verification uses isolated Docker volumes and
+no provider credentials. The running checkout and saved databases are unchanged.
 
 ### Existing integrated experiments
 

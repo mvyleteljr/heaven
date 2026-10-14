@@ -13,6 +13,10 @@ const generatedSeed = {
   config: { actor_model: "selected/actor", world_model: "selected/generator", action_limit: 70, call_limit: 160, dollar_limit: 0.75, generator_settings: { max_tokens: 8192 } },
 };
 const config = { demo: true, actor_model: "openai/gpt-4.1-mini", world_model: "openai/gpt-4.1-mini", action_limit: 20, call_limit: 40, dollar_limit: 1 };
+const harborReviewSeed = {
+  ...institutionSeed,
+  config: {...config, demo: false, actor_model: "openai/gpt-6.1-sol", world_model: "openai/gpt-6.1-sol", action_limit: 60, call_limit: 90, expansion_limit: 0},
+};
 const frame = (seq, kind = "seed") => ({
   world: structuredClone(world),
   event: { seq, kind, summary: `Checkpoint ${seq}`, evidence: kind === "seed" ? {} : { action: { kind: "wait", inputs: { seconds: 1 } }, result: { waited: 1 } } },
@@ -53,6 +57,7 @@ async function browser({ search = "", stored = "", keyAvailable = true, respond,
     if (path === "runs") return [...runs.values()].map((value) => value.run);
     if (path === "health") return { key_available: keyAvailable };
     if (["institution-seed?template=generative", "institution-seed?template=story-review", "institution-seed?template=expansion-demo"].includes(path)) return generatedSeed;
+    if (["institution-seed?template=harbor-review", "institution-seed?template=harbor-review-v2"].includes(path)) return harborReviewSeed;
     if (path.startsWith("institution-seed")) return institutionSeed;
     if (path.endsWith("-seed")) return seed;
     if (["flowers", "bellwether", "institutions"].includes(path) && options.method === "POST") {
@@ -133,8 +138,18 @@ for (const selected of templates) {
       if (["generative", "story-review", "expansion-demo"].includes(selected.template)) {
         assert.deepEqual(body.generation, generation);
         for (const [key, value] of Object.entries(generatedSeed.config)) assert.deepEqual(body.config[key], value);
+      } else {
+        assert.equal(submittedConfig.actor_model, "openai/gpt-6.1-sol");
+        assert.equal(submittedConfig.world_model, "openai/gpt-6.1-sol");
+        assert.equal(submittedConfig.actor_settings.temperature, null);
+        assert.equal(submittedConfig.generator_settings.temperature, null);
       }
       if (selected.key === "bellwether") assert.equal(submittedConfig.action_limit, 100);
+      if (["harbor_review", "harbor_review_v2"].includes(selected.key)) {
+        assert.equal(submittedConfig.action_limit, 60);
+        assert.equal(submittedConfig.expansion_limit, 0);
+        assert.equal(body.generation, undefined);
+      }
       assert.equal(posts[1].path, "runs/created-1/control");
       assert.deepEqual(JSON.parse(posts[1].options.body), { command });
       assert.equal(b.state.selection, "run:created-1");

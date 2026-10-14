@@ -1,5 +1,497 @@
 use super::*;
 
+fn review_app() -> Result<(App, Run)> {
+    review_app_for("story-review", experiments::Experiment::OntoReview)
+}
+
+fn review_app_for(template: &str, experiment: experiments::Experiment) -> Result<(App, Run)> {
+    let (app, mut run) = app(Config {
+        demo: false,
+        structured_actions: true,
+        context_limit_bytes: 256_000,
+        actor_settings: Some(frontier::ActorSettings {
+            provider: "openrouter".into(),
+            temperature: None,
+            max_tokens: 4096,
+            reasoning_effort: None,
+            endpoint: "mock".into(),
+        }),
+        dollar_limit: 2.0,
+        ..Config::default()
+    })?;
+    let preview = experiments::institutions::preview(template)?;
+    ensure!(
+        preview["runtime_available"] == true,
+        "{}",
+        preview["runtime_error"]
+    );
+    run.world = serde_json::from_value(preview["world"].clone())?;
+    run.experiment = Some(experiment);
+    run.config.actor_system_prompt = Some(frontier::story_executor::SYSTEM.into());
+    app.store
+        .lock()
+        .unwrap()
+        .commit(&mut run, "seed", "Story review", json!({}))?;
+    Ok((app, run))
+}
+
+#[tokio::test]
+#[ignore = "Requires optional Onto bundle; scripts/dev check-jit"]
+async fn jit_harbor_review_actor_uses_direct_stories_without_business_tools() -> Result<()> {
+    let (mut app, run) = review_app_for("harbor-review", experiments::Experiment::HarborReview)?;
+    let actions = vec![
+        json!({"kind":"onto.execute","inputs":{"command_id":"harbor-direct-delivery","story":"Business delivers Agreement with Service","object":"Agreement:fixture-authorized","participants_json":"{\"Service\":\"Service:fixture-directory\"}"}}),
+        json!({"kind":"finish","inputs":{"message":"Onto committed harbor-direct-delivery. Prior approval and service verification came from synthetic fixtures; no software was deployed."}}),
+    ];
+    let count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let c = count.clone();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    app.inference_url = format!("http://{}/completion", listener.local_addr()?);
+    let router=Router::new().route("/completion",post(move |Json(request):Json<Value>| {
+        let (c, actions) = (c.clone(), actions.clone());
+        async move {
+            let n = c.fetch_add(1,Ordering::SeqCst);
+            let schema = request["response_format"].to_string();
+            for forbidden in ["shell.exec", "http.request", "file.write", "mail.send", "onto.expand", "onto.inspect"] {
+                assert!(!schema.contains(forbidden), "{forbidden}");
+            }
+            let input: Value = serde_json::from_str(request["messages"][1]["content"].as_str().unwrap()).unwrap();
+            assert_eq!(input["review_context"]["facts"]["instances"].as_array().unwrap().len(), 45);
+            assert!(input["history"].is_null());
+            assert_eq!(input["review_context"]["command_ledger"].as_array().unwrap().len(), n);
+            let output = typed_actor_output(&request, &actions[n]);
+            Json(json!({"usage":{"cost":0.0001},"choices":[{"finish_reason":"stop","message":{"content":output.to_string()}}]}))
+        }
+    }));
+    let _mock = Mock(tokio::spawn(async move {
+        axum::serve(listener, router).await.unwrap();
+    }));
+    for _ in 0..2 {
+        step(&app, &run.id).await?;
+    }
+    let store = app.store.lock().unwrap();
+    let saved = store.load(&run.id)?;
+    assert_eq!(saved.status, "finished");
+    assert_eq!(
+        saved.experiment,
+        Some(experiments::Experiment::HarborReview)
+    );
+    assert_eq!(saved.actions, 2);
+    assert_eq!(saved.calls, 2);
+    assert_eq!(count.load(Ordering::SeqCst), 2);
+    assert_eq!(saved.expansions, 0);
+    assert!(saved.world.hosting.is_none());
+    assert_eq!(saved.world.transcript[0]["action"]["kind"], "onto.execute");
+    assert_eq!(saved.world.transcript[0]["result"]["committed"], true);
+    assert!(
+        !saved.world.transcript[0]["result"]["changes"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(saved.world.ontology.as_ref().unwrap().receipts.len(), 1);
+    assert_eq!(
+        frontier::audit::report(&saved, &store.events(&run.id)?)["integrity"]["events_contiguous"],
+        true
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "Requires optional Onto bundle; scripts/dev check-jit"]
+async fn jit_harbor_review_limits_produce_partial_reports_without_overspending() -> Result<()> {
+    for mode in ["dollars", "calls", "actions", "unaffordable", "context"] {
+        let (mut app, mut run) =
+            review_app_for("harbor-review-v2", experiments::Experiment::HarborReviewV2)?;
+        let request = inference_request(
+            &run,
+            "actor",
+            actor_system(&run),
+            &memory::observation(&run),
+        )?;
+        let reserve = inference_reservation(&request)?;
+        match mode {
+            "dollars" => run.config.dollar_limit = reserve * 2.0 + 0.01,
+            "calls" => run.config.call_limit = 2,
+            "actions" => run.config.action_limit = 2,
+            "unaffordable" => run.config.dollar_limit = 0.001,
+            _ => run.config.context_limit_bytes = 1,
+        }
+        app.store
+            .lock()
+            .unwrap()
+            .commit(&mut run, "seed", "Bounded review fixture", json!({}))?;
+        let count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let c = count.clone();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+        app.inference_url = format!("http://{}/completion", listener.local_addr()?);
+        let router = Router::new().route("/completion", post(move |Json(request): Json<Value>| {
+            let c = c.clone();
+            async move {
+                let n = c.fetch_add(1, Ordering::SeqCst);
+                assert!(n < 2, "Unexpected additional inference");
+                let input: Value = serde_json::from_str(request["messages"][1]["content"].as_str().unwrap()).unwrap();
+                assert_eq!(input["review_budget"]["finish_only"], n == 1);
+                let action = if n == 0 {
+                    json!({"kind":"onto.execute","inputs":{"command_id":"budget-delivery","story":"Business delivers Agreement with Service","object":"Agreement:fixture-authorized","participants_json":"{\"Service\":\"Service:fixture-directory\"}","fields_json":"{\"deliveredAt\":\"2026-01-10T00:00:00\"}"}})
+                } else {
+                    assert!(!request["response_format"].to_string().contains("onto.execute"));
+                    assert_eq!(input["review_context"]["command_ledger"][0]["result"]["committed"], true);
+                    json!({"kind":"finish","inputs":{"message":"Partial review: budget-delivery committed. Authority, amount and capacity checks remain untested; initial approvals were synthetic."}})
+                };
+                let output = typed_actor_output(&request, &action);
+                Json(json!({"usage":{"cost":reserve * 0.75},"choices":[{"finish_reason":"stop","message":{"content":output.to_string()}}]}))
+            }
+        }));
+        let _mock = Mock(tokio::spawn(async move {
+            axum::serve(listener, router).await.unwrap();
+        }));
+        let free = matches!(mode, "unaffordable" | "context");
+        step(&app, &run.id).await?;
+        if !free {
+            step(&app, &run.id).await?;
+        }
+        let store = app.store.lock().unwrap();
+        let saved = store.load(&run.id)?;
+        assert_eq!(saved.status, "finished", "{mode}");
+        assert!(saved.world.finished && !saved.busy);
+        assert_eq!(saved.calls, if free { 0 } else { 2 });
+        assert_eq!(saved.actions, if free { 0 } else { 2 });
+        assert_eq!(count.load(Ordering::SeqCst), saved.calls as usize);
+        assert!(saved.charged + saved.reserved <= saved.config.dollar_limit + 1e-9);
+        let events = store.events(&run.id)?;
+        let report = events.last().unwrap();
+        assert_eq!(report.kind, "review_report");
+        assert!(report.checkpoint);
+        assert_eq!(
+            store.frames(&run.id)?.last().unwrap()["event"]["kind"],
+            "review_report"
+        );
+        assert_eq!(store.frames_after(&run.id, saved.seq - 1)?.len(), 1);
+        assert_eq!(report.evidence["partial"], true);
+        assert_eq!(
+            report.evidence["source"],
+            if free { "host" } else { "actor" }
+        );
+        assert!(
+            report.evidence["message"]
+                .as_str()
+                .unwrap()
+                .contains("Partial review")
+        );
+        assert!(
+            !events
+                .iter()
+                .any(|e| e.kind == "error" || e.kind == "inference_failure")
+        );
+        assert_eq!(
+            store.checkpoint(&run.id, saved.seq)?.checkpoint_hash(),
+            saved.checkpoint_hash()
+        );
+    }
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "Requires optional Onto bundle; scripts/dev check-jit"]
+async fn jit_story_review_recovers_recorded_bad_command_and_moves_from_reads_to_execution()
+-> Result<()> {
+    let (mut app, run) = review_app()?;
+    let recorded: Value = serde_json::from_str(include_str!(
+        "../tests/fixtures/story-review-invalid-action.json"
+    ))?;
+    let mut corrected = recorded["action"].clone();
+    corrected["inputs"]["about"] = Value::Null;
+    let mut malformed = corrected.clone();
+    malformed["inputs"]["fields_json"] = json!("{");
+    let actions = vec![
+        json!({"kind":"onto.inspect","inputs":{"module":"repair","view":"model"}}),
+        json!({"kind":"onto.inspect","inputs":{"module":"repair","view":"facts"}}),
+        json!({"kind":"onto.inspect","inputs":{"module":"repair","view":"facts"}}),
+        recorded["action"].clone(),
+        malformed,
+        corrected,
+        json!({"kind":"onto.inspect","inputs":{"module":"repair","view":"facts"}}),
+        json!({"kind":"finish","inputs":{"message":"Approval committed at cmd-approve-again-001; earlier malformed calls changed no institutional facts."}}),
+    ];
+    let count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let c = count.clone();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    app.inference_url = format!("http://{}/completion", listener.local_addr()?);
+    let router=Router::new().route("/completion",post(move |Json(request):Json<Value>| {
+        let (c, actions) = (c.clone(),actions.clone());
+        async move {
+            let n = c.fetch_add(1,Ordering::SeqCst);
+            let input: Value=serde_json::from_str(request["messages"][1]["content"].as_str().unwrap()).unwrap();
+            if (3..6).contains(&n) {
+                assert_eq!(input["review_progress"]["must_execute_or_finish"],true);
+                assert!(!request["response_format"].to_string().contains("onto.inspect"));
+                assert!(!request["response_format"].to_string().contains("onto.expand"));
+            }
+            if n==4 {
+                assert_eq!(input["history"][3]["result"]["code"],"review_input_error");
+                assert!(input["history"][3]["result"]["error"].as_str().unwrap().contains("about"));
+            }
+            if n==5 { assert_eq!(input["review_progress"]["consecutive_input_errors"],2); }
+            if n==6 {
+                assert_eq!(input["review_progress"]["consecutive_input_errors"],0);
+                assert_eq!(input["history"][5]["result"]["committed"],true);
+                assert!(request["response_format"].to_string().contains("onto.inspect"));
+            }
+            let output=typed_actor_output(&request,&actions[n]);
+            Json(json!({"usage":{"cost":0.0001},"choices":[{"finish_reason":"stop","message":{"content":output.to_string()}}]}))
+        }
+    }));
+    let _mock = Mock(tokio::spawn(async move {
+        axum::serve(listener, router).await.unwrap();
+    }));
+    for _ in 0..5 {
+        step(&app, &run.id).await?;
+    }
+    let before = app.store.lock().unwrap().load(&run.id)?;
+    assert_eq!(
+        before.world.ontology.as_ref().unwrap().modules["repair"].snapshot["instances"],
+        run.world.ontology.as_ref().unwrap().modules["repair"].snapshot["instances"]
+    );
+    assert!(
+        before.world.ontology.as_ref().unwrap().modules["repair"]
+            .receipts
+            .is_empty()
+    );
+    for _ in 0..3 {
+        step(&app, &run.id).await?;
+    }
+    let store = app.store.lock().unwrap();
+    let saved = store.load(&run.id)?;
+    assert_eq!(saved.status, "finished");
+    assert_eq!(saved.actions, 8);
+    assert_eq!(saved.calls, 8);
+    assert_eq!(saved.expansions, 0);
+    assert_eq!(count.load(Ordering::SeqCst), 8);
+    assert_eq!(
+        saved.world.ontology.as_ref().unwrap().modules["repair"]
+            .receipts
+            .len(),
+        1
+    );
+    assert_eq!(
+        saved.world.transcript[5]["result"]["changes"][0]["after"]["fields"]["approved"],
+        true
+    );
+    assert!(
+        !store
+            .events(&run.id)?
+            .iter()
+            .any(|e| e.kind == "actor_rejected")
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "Requires optional Onto bundle; scripts/dev check-jit"]
+async fn jit_story_review_pauses_after_three_invalid_calls_without_extra_inference() -> Result<()> {
+    for kind in ["bad_json", "read_loop"] {
+        let (mut app, mut run) = review_app()?;
+        let action = if kind == "bad_json" {
+            json!({"action":{"kind":"onto.execute","inputs":{"module":"repair","command_id":"bad","story":"Operator approves RepairRequest","object":"RepairRequest:intake","about":null,"participants_json":null,"fields_json":"{"}}})
+        } else {
+            run.world.transcript=(0..3).map(|_| json!({"action":{"kind":"onto.inspect","inputs":{"module":"repair","view":"facts"}},"result":{}})).collect();
+            app.store.lock().unwrap().commit(
+                &mut run,
+                "outcome",
+                "Inspections recorded",
+                json!({}),
+            )?;
+            // A legacy response cannot bypass the temporary read restriction.
+            json!({"kind":"onto.inspect","inputs_json":"{\"module\":\"repair\",\"view\":\"facts\"}"})
+        };
+        let _mock=provider(&mut app,StatusCode::OK,json!({"usage":{"cost":0.0001},"choices":[{"finish_reason":"stop","message":{"content":action.to_string()}}]}).to_string()).await?;
+        let mut headers = HeaderMap::new();
+        headers.insert("x-frontier-client", "research-ui".parse()?);
+        let _ = control(
+            State(app.clone()),
+            Path(run.id.clone()),
+            headers,
+            Json(Command {
+                command: "run".into(),
+            }),
+        )
+        .await
+        .map_err(|e| e.0)?;
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while app.active.load(Ordering::SeqCst) {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await?;
+        let store = app.store.lock().unwrap();
+        let saved = store.load(&run.id)?;
+        assert_eq!(saved.status, "error");
+        assert!(!saved.busy);
+        assert_eq!(saved.actions, 3);
+        assert_eq!(saved.calls, 3);
+        assert_eq!(saved.world.ontology, run.world.ontology);
+        assert_eq!(frontier::story_executor::correction_streak(&saved.world), 3);
+        assert!(
+            store.events(&run.id)?.last().unwrap().evidence["error"]
+                .as_str()
+                .unwrap()
+                .contains("three consecutive")
+        );
+        assert!(saved.reserved.abs() < 1e-12);
+    }
+    Ok(())
+}
+
+#[test]
+fn review_recovers_known_tool_arguments_but_rejects_unknown_tools_and_envelopes() -> Result<()> {
+    let mut run = Run::new(Config::default())?;
+    run.world = experiments::bellwether::seed();
+    frontier::story_executor::configure(&mut run.world);
+    run.config.structured_actions = true;
+    for response in [
+        json!({"action":{"kind":"onto.execute","inputs":{"module":"repair"}}}),
+        json!({"action":{"kind":"onto.execute","inputs":{"module":"repair","actor":"Operator:Other"}}}),
+    ] {
+        let action = parse_actor_action(&run, &response.to_string())?;
+        assert!(tools::validate_action(&action).is_err());
+    }
+    for response in [
+        json!({"action":{"kind":"shell.exec","inputs":{"command":"echo bypass"}}}),
+        json!({"action":{"kind":"onto.execute","inputs":"{}"}}),
+        json!({"action":{"kind":"onto.execute","inputs":{}},"extra":true}),
+    ] {
+        assert!(parse_actor_action(&run, &response.to_string()).is_err());
+    }
+    assert!(parse_actor_action(&run, "{").is_err());
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "Requires optional Onto bundle; scripts/dev check-jit"]
+async fn jit_story_review_bounds_failed_additions_and_continues_existing_stories() -> Result<()> {
+    let (mut app, mut run) = app(Config {
+        demo: false,
+        structured_actions: true,
+        actor_settings: Some(frontier::ActorSettings {
+            provider: "openrouter".into(),
+            temperature: None,
+            max_tokens: 4096,
+            reasoning_effort: None,
+            endpoint: "mock".into(),
+        }),
+        expansion_limit: 2,
+        dollar_limit: 2.0,
+        ..Config::default()
+    })?;
+    let preview = experiments::institutions::preview("story-review")?;
+    run.world = serde_json::from_value(preview["world"].clone())?;
+    run.experiment = Some(experiments::Experiment::OntoReview);
+    run.config.actor_system_prompt = Some(frontier::story_executor::SYSTEM.into());
+    let initial = run.world.ontology.clone();
+    app.store
+        .lock()
+        .unwrap()
+        .commit(&mut run, "seed", "Story review", json!({}))?;
+    let actions = vec![
+        json!({"kind":"onto.expand","inputs":{"module":"broken"}}),
+        json!({"kind":"onto.expand","inputs":{"module":"broken"}}),
+        json!({"kind":"onto.expand","inputs":{"module":"another"}}),
+        json!({"kind":"onto.execute","inputs":{"module":"repair","command_id":"after-failure","story":"Operator approves RepairRequest","object":"RepairRequest:intake"}}),
+        json!({"kind":"finish","inputs":{"message":"Existing approval Story committed; additions failed compilation."}}),
+    ];
+    let actors = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let generated = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let (a, g) = (actors.clone(), generated.clone());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    app.inference_url = format!("http://{}/completion", listener.local_addr()?);
+    let router = Router::new().route("/completion", post(move |Json(request): Json<Value>| {
+        let (a, g, actions) = (a.clone(), g.clone(), actions.clone());
+        async move {
+            let input: Value = serde_json::from_str(request["messages"][1]["content"].as_str().unwrap()).unwrap();
+            let output = if request["messages"][0]["content"] == frontier::institutions::GENERATOR {
+                let n = g.fetch_add(1, Ordering::SeqCst);
+                if n % 3 != 0 {
+                    assert!(input["context"]["supporting"]["validation_error"].as_str().unwrap().contains("invented"));
+                    assert!(input["context"]["supporting"]["previous_response"].is_string());
+                }
+                json!({"source":"object Broken\n  value: invented\n", "agent_state":{"fields":[]}, "error":null})
+            } else {
+                let n = a.fetch_add(1, Ordering::SeqCst);
+                assert_eq!(input["available_modules"], json!(["repair"]));
+                if n == 1 {
+                    assert_eq!(input["generation_status"]["remaining_attempts"], 1);
+                    assert_eq!(input["generation_status"]["blocked_modules"], json!(["broken"]));
+                }
+                if n >= 3 {
+                    assert_eq!(input["generation_status"]["can_expand"], false);
+                    assert!(!request["response_format"].to_string().contains("onto.expand"));
+                    assert!(!input["tools"].to_string().contains("onto.expand"));
+                }
+                typed_actor_output(&request, &actions[n])
+            };
+            Json(json!({"usage":{"cost":0.0001},"choices":[{"finish_reason":"stop","message":{"content":output.to_string()}}]}))
+        }
+    }));
+    let _mock = Mock(tokio::spawn(async move {
+        axum::serve(listener, router).await.unwrap();
+    }));
+    for _ in 0..3 {
+        step(&app, &run.id).await?;
+    }
+    {
+        let store = app.store.lock().unwrap();
+        let saved = store.load(&run.id)?;
+        assert_eq!(saved.world.ontology, initial);
+        assert_eq!(generated.load(Ordering::SeqCst), 6); // Initial + two repairs, twice.
+        assert_eq!(saved.expansions, 2); // Repeating the failed name cannot call the generator.
+        let results = &saved.world.transcript;
+        assert!(
+            results[0]["result"]["error"]
+                .as_str()
+                .unwrap()
+                .contains("invented")
+        );
+        assert_eq!(results[0]["result"]["retryable"], false);
+        assert!(
+            results[1]["result"]["error"]
+                .as_str()
+                .unwrap()
+                .contains("already failed")
+        );
+        assert_eq!(
+            results[2]["result"]["generation_status"]["remaining_attempts"],
+            0
+        );
+        assert_eq!(results[2]["result"]["existing_modules"], json!(["repair"]));
+        let events = store.events(&run.id)?;
+        assert_eq!(
+            events
+                .iter()
+                .filter(|e| e.kind == "construction_validation")
+                .count(),
+            6
+        );
+        assert!(!events.iter().any(|e| e.kind == "published"));
+    }
+    for _ in 0..2 {
+        step(&app, &run.id).await?;
+    }
+    let saved = app.store.lock().unwrap().load(&run.id)?;
+    assert_eq!(saved.status, "finished");
+    assert_eq!(saved.calls, 11);
+    assert_eq!(saved.actions, 5);
+    assert_eq!(saved.world.transcript[3]["result"]["committed"], true);
+    assert_eq!(saved.world.ontology.as_ref().unwrap().modules.len(), 1);
+    assert!(
+        saved.world.ontology.as_ref().unwrap().modules["repair"]
+            .receipts
+            .contains_key("after-failure")
+    );
+    assert!(saved.reserved.abs() < 1e-12);
+    Ok(())
+}
+
 #[tokio::test]
 #[ignore = "Requires optional Onto bundle; scripts/dev check-jit"]
 async fn jit_expansion_demo_seed_generates_retries_and_commits_a_ticket() -> Result<()> {
@@ -1254,6 +1746,34 @@ async fn larger_reasoning_output_still_requires_full_cost_reservation() -> Resul
     let saved = app.store.lock().unwrap().load(&run.id)?;
     assert_eq!(saved.calls, 0);
     assert_eq!(saved.reserved, 0.0);
+    Ok(())
+}
+
+#[test]
+fn sol_defaults_work_without_explicit_settings_and_preserve_overrides() -> Result<()> {
+    let (_, mut run) = app(Config::default())?;
+    for role in ["actor", "world", "memory"] {
+        let request = inference_request(&run, role, "system", &json!({}))?;
+        assert_eq!(request["model"], "openai/gpt-6.1-sol");
+        assert!(request.get("temperature").is_none());
+        assert_eq!(request["max_tokens"], 4096);
+    }
+    run.config.actor_model = "openai/gpt-4.1-mini".into();
+    let request = inference_request(&run, "actor", "system", &json!({}))?;
+    assert_eq!(request["temperature"], 0.7);
+    assert_eq!(request["max_tokens"], 1024);
+    run.config.actor_model = "openai/gpt-6.1-sol".into();
+    run.config.actor_settings = Some(frontier::ActorSettings {
+        provider: "openrouter".into(),
+        temperature: None,
+        max_tokens: 8192,
+        reasoning_effort: Some("high".into()),
+        endpoint: "mock".into(),
+    });
+    let request = inference_request(&run, "actor", "system", &json!({}))?;
+    assert_eq!(request["max_tokens"], 8192);
+    assert_eq!(request["reasoning"]["effort"], "high");
+    assert_eq!(request["provider"]["only"], json!(["mock"]));
     Ok(())
 }
 

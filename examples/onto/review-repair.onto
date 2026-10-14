@@ -1,0 +1,43 @@
+# Authored starting institution for Story review, compiled before a run is saved.
+# Costs are integer authorization units, not a cash ledger.
+
+object RepairPolicy
+  name: string @required
+  company: Company @required
+  limit: int @required
+  @rule RepairPolicy.limit is more than 0
+  @rule RepairPolicy.limit is at most RepairPolicy.company.ceiling
+
+object RepairRequest
+  name: string @required @unique
+  cost: int @required
+  policy: RepairPolicy @required
+  approved: bool @default(false)
+  completed: bool @default(false)
+  @rule RepairRequest.cost is more than 0
+  @rule RepairRequest.cost is at most RepairRequest.policy.limit
+
+story RepairOperations
+  Operator creates RepairRequest for RepairPolicy
+    sets RepairRequest.policy to RepairPolicy
+    sets RepairRequest.approved to false
+    sets RepairRequest.completed to false
+  Operator approves RepairRequest
+    requires RepairRequest.approved is false
+    sets RepairRequest.approved to true
+  Operator completes RepairRequest
+    requires RepairRequest.approved is true
+    requires RepairRequest.completed is false
+    sets RepairRequest.completed to true
+
+story PolicyChanges
+  Operator expands RepairPolicy
+    sets RepairPolicy.limit to 75
+  Operator restores RepairPolicy
+    sets RepairPolicy.limit to 25
+
+seed RepairPolicy
+  name: "standard", company: "Core", limit: 25
+
+seed RepairRequest
+  name: "intake", cost: 10, policy: "standard", approved: false, completed: false

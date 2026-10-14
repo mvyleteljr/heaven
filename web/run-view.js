@@ -28,14 +28,14 @@ export function experimentName(runOrKey) {
   const run = typeof runOrKey === "object" && runOrKey ? runOrKey : null;
   let key = run?.experiment ?? runOrKey;
   if (key === "institutions" && (run?.world?.ontology?.generation || entries(run?.world?.ontology?.modules).length)) key = "institutions_generated";
-  return ({ flowers: "Flowers for Friday", bellwether: "Harbor Works", institutions: "Onto · Accounts", harbor_onto: "Onto · Harbor Works", institutions_generated: "Onto · Generated company", institutions_expansion: "Onto · Missing domain demo", onto_review: "Onto · Story review", records: "Records", recall: "Archive handoff" })[key] ?? run?.name ?? "Experiment";
+  return ({ flowers: "Flowers for Friday", bellwether: "Harbor Works", institutions: "Onto · Accounts", harbor_onto: "Onto · Harbor Works", harbor_review: "Harbor Works · Story review", harbor_review_v2: "Harbor Works · Story review v2", institutions_generated: "Onto · Generated company", institutions_expansion: "Onto · Missing domain demo", onto_review: "Onto · Story review", records: "Records", recall: "Archive handoff" })[key] ?? run?.name ?? "Experiment";
 }
 
 export function traceFrames(data) {
   const workflows = new Map();
   return list(data?.frames).filter((frame) => {
     const kind = frame.event?.kind;
-    return !!frame.event?.evidence?.action || ["seed", "fork", "outcome", "expansion", "denied", "error", "recovery", "intervention"].includes(kind);
+    return !!frame.event?.evidence?.action || ["seed", "fork", "outcome", "expansion", "denied", "error", "recovery", "intervention", "review_report"].includes(kind);
   }).map((frame) => {
     const event = frame.event ?? {}, evidence = event.evidence ?? {};
     const id = evidence.action_id;
@@ -142,7 +142,7 @@ export function renderAgent(frame, index = 0, data = {}) {
   if (phase === "succeeded") outcome = { ...outcome, title: "Action completed", detail: "The original action succeeded with the new capability available." };
   const resourceState = workflow && frame.world?.ontology?.modules?.[workflow.module];
   const requirements = workflow ? `<section class="action-resources"><h3>${phase === "succeeded" ? "Resources available" : "Required resources"}</h3><ul>${workflow.requires.map((resource) => `<li><span class="resource-status">${resourceState ? "Available" : "Missing"}</span> <span title="${esc(resource)}">${esc(workflow.module)}</span></li>`).join("")}${workflow.dependencies.map((resource) => `<li><span class="resource-status">Dependency</span> <span title="${esc(resource)}">Shared foundation</span></li>`).join("")}</ul>${resourceState ? `<p>${list(resourceState.snapshot?.instances).length} recorded objects · ${list(resourceState.stories).length} executable Stories</p>` : ""}</section>` : "";
-  const report = action?.kind === "finish" ? action.inputs?.message ?? action.text : null;
+  const report = event.kind === "review_report" ? evidence.message : action?.kind === "finish" ? action.inputs?.message ?? action.text : null;
   const input = action?.inputs;
   const domain = input?.url || (action?.kind?.startsWith("onto.") ? input?.module || "Company foundation" : null) || action?.target || experimentName(data?.run);
   return `<article class="stage-card story-card${workflow ? " workflow-card" : ""}"><div class="card-meta"><span>Checkpoint ${esc(index + 1)}</span><span>${esc(event.kind ?? "seed")}${event.seq != null ? ` · event ${esc(event.seq)}` : ""}</span></div><h2 class="story-title serif">${esc(compact(title, 220))}</h2>${workflow ? "" : `<div class="story-domain">${esc(domain)}</div>`}<div class="story-outcome"><strong>${esc(outcome.title)}</strong><p>${esc(outcome.detail)}</p></div>${requirements}${report ? `<p class="story-report">${esc(report)}</p>` : ""}${action ? raw("Action inputs", action) : ""}${evidence.result !== undefined ? raw("Recorded result", evidence.result) : !isSeed && entries(evidence).length ? raw("Recorded evidence", evidence) : ""}${isSeed && data?.initial?.actor_instructions ? raw("Actor instructions", data.initial.actor_instructions) : ""}</article>`;

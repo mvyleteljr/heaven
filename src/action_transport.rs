@@ -4,7 +4,7 @@ use frontier::{Action, tools};
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
-pub const STORY_INSTRUCTIONS: &str = r#"Return exactly {"action":{"kind":"TOOL_NAME","inputs":{...}}}, matching the selected tool's response schema. Supply every property shown; use null for an unused optional input. Example: {"action":{"kind":"onto.inspect","inputs":{"module":null,"view":"overview"}}}. For onto.execute, copy the exact Story sentence and supply participant/creation JSON object strings separately. Choose one action per response. End with finish and a nonempty message containing your evidence-based review."#;
+pub const STORY_INSTRUCTIONS: &str = r#"Return exactly {"action":{"kind":"TOOL_NAME","inputs":{...}}}, matching the selected tool's response schema. Supply every property shown; use null for an unused optional input. After reading the model and facts, execute a Story; repeated inspection does not test any rule. For onto.execute, copy the exact Story sentence and use actual instance IDs from the facts. participants_json and fields_json are JSON object strings, such as "{}", or null when unused. about is an instance ID only for a Story that declares an about context; it is NOT a description, rationale or test name. An approval command has this shape: {"action":{"kind":"onto.execute","inputs":{"module":"repair","command_id":"approval-probe-1","story":"Operator approves RepairRequest","object":"RepairRequest:intake","about":null,"participants_json":null,"fields_json":null}}}. Choose the actual test from the observed model and facts, not from this example. Check review_progress and use only currently available tools. After an input error, correct the identified fields; do not repeat the invalid call. Choose one action per response. End with finish and a nonempty message containing your evidence-based review."#;
 
 pub const INSTRUCTIONS: &str = r#"Output transport v2: return exactly {"action":{"kind":"TOOL_NAME","inputs":{...}}}, matching the selected tool's schema in the response format. This transport overrides other response spelling in the tool policy. Supply every input property shown there; use null for an unused optional input. HTTP headers are an array of {"name":"Content-Type","value":"application/json"} entries, or null. HTTP body remains a string, including JSON-encoded request bodies. Do not emit multiple actions or call external tools. A GET example (replace the example URL with the intended service URL) is {"action":{"kind":"http.request","inputs":{"method":"GET","url":"https://service.example/resource","headers":null,"body":null}}}. To end the run, include your actual final report: {"action":{"kind":"finish","inputs":{"message":"Your report of confirmed results or remaining problems goes here."}}}. Never send empty inputs for finish or http.request. After an input error, correct the reported fields before retrying; do not repeat the same invalid call. A successful operation need not be submitted again to finish the run."#;
 
@@ -77,6 +77,17 @@ struct Header {
 }
 
 pub fn parse(response: &str, definitions: &Value) -> Result<Action> {
+    validated(decode_inner(response, definitions, false)?, definitions)
+}
+
+/// Decode only a known tool's envelope. Story review validates its arguments
+/// during the recorded action, so correctable input errors become observations.
+/// Malformed envelopes and unknown tools remain fatal protocol errors.
+pub fn decode(response: &str, definitions: &Value) -> Result<Action> {
+    decode_inner(response, definitions, true)
+}
+
+fn decode_inner(response: &str, definitions: &Value, recover_inputs: bool) -> Result<Action> {
     let value: Value = serde_json::from_str(response)?;
     if value.get("action").is_none() {
         // Old traces and saved runs keep their original transport. New requests
@@ -89,7 +100,7 @@ pub fn parse(response: &str, definitions: &Value) -> Result<Action> {
         );
         let inputs: Value = serde_json::from_str(&envelope.inputs_json)?;
         ensure!(inputs.is_object(), "Action inputs must be a JSON object");
-        return validated(tools::call(&envelope.kind, inputs), definitions);
+        return Ok(tools::call(&envelope.kind, inputs));
     }
     let envelope: TypedEnvelope = serde_json::from_value(value)?;
     let TypedAction { kind, mut inputs } = envelope.action;
@@ -102,10 +113,10 @@ pub fn parse(response: &str, definitions: &Value) -> Result<Action> {
         .context("Missing required inputs")?;
     for key in properties.keys() {
         ensure!(
-            inputs.contains_key(key),
+            recover_inputs || inputs.contains_key(key),
             "Tool {kind} is missing input {key:?}; supply its value, or null only when optional"
         );
-        if !required.contains(&json!(key)) && inputs[key].is_null() {
+        if !required.contains(&json!(key)) && inputs.get(key).is_some_and(Value::is_null) {
             inputs.remove(key);
         }
     }
@@ -126,7 +137,7 @@ pub fn parse(response: &str, definitions: &Value) -> Result<Action> {
         }
         inputs.insert("headers".into(), json!(map));
     }
-    validated(tools::call(&kind, json!(inputs)), definitions)
+    Ok(tools::call(&kind, json!(inputs)))
 }
 
 fn validated(action: Action, definitions: &Value) -> Result<Action> {
@@ -145,6 +156,9 @@ pub fn input_error(action: &Action, definitions: &Value, error: &anyhow::Error) 
         }
         "http.request" => {
             r#" Include method and url; for example {"method":"GET","url":"https://service.example/resource"}. Use the intended service URL, not this example URL. Encode a JSON request body as a string."#
+        }
+        "onto.execute" => {
+            r#" Use null or "{}" for unused participants_json/fields_json; otherwise supply valid JSON object strings. object and about are instance IDs, never explanatory prose. Leave about null unless the selected Story declares an about context. Copy an exact Story sentence from the model."#
         }
         _ => "",
     };

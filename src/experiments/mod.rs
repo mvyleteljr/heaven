@@ -2,6 +2,7 @@
 pub mod bellwether;
 pub mod flowers;
 pub mod harbor_onto;
+pub mod harbor_review;
 pub mod institutions;
 pub mod recall;
 pub mod records;
@@ -24,6 +25,8 @@ pub enum Experiment {
     Institutions,
     HarborOnto,
     OntoReview,
+    HarborReview,
+    HarborReviewV2,
 }
 
 pub fn measure(run: &Run, events: &[crate::Event]) -> Value {
@@ -41,6 +44,9 @@ pub fn resolve(run: &Run, action: &Action) -> Result<Resolution> {
     {
         return Ok(Resolution::Denied);
     }
+    if crate::story_executor::enabled(&run.world) {
+        crate::story_executor::check_progress(&run.world, action)?;
+    }
     if action.kind == "onto.expand" {
         ensure!(
             crate::story_executor::enabled(&run.world),
@@ -50,6 +56,17 @@ pub fn resolve(run: &Run, action: &Action) -> Result<Resolution> {
         if exists(&run.world, &target) {
             return Ok(Resolution::Existing);
         }
+        let module = action.inputs.as_ref().unwrap()["module"].as_str().unwrap();
+        ensure!(
+            !crate::story_executor::blocked_modules(run)
+                .iter()
+                .any(|m| m == module),
+            "Generation for module {module} already failed in this run; inspect existing modules or finish"
+        );
+        ensure!(
+            run.expansions < run.config.expansion_limit,
+            "Expansion limit exhausted; no generation attempts remain. Inspect existing modules or finish"
+        );
         return Ok(match crate::institutions::directive(run, &target) {
             Some(directive) => Resolution::Missing {
                 directive,
@@ -114,7 +131,9 @@ pub fn resolve(run: &Run, action: &Action) -> Result<Resolution> {
         Some(Experiment::Institutions | Experiment::OntoReview) => {
             crate::institutions::directive(run, target)
         }
-        Some(Experiment::HarborOnto) => None,
+        Some(Experiment::HarborOnto | Experiment::HarborReview | Experiment::HarborReviewV2) => {
+            None
+        }
         None => None,
     };
     Ok(match directive {
@@ -185,7 +204,13 @@ pub fn context(run: &Run, target: &str) -> Result<Value> {
         Some(Experiment::Institutions | Experiment::OntoReview) => {
             crate::institutions::context(run)
         }
-        None | Some(Experiment::Recall | Experiment::HarborOnto) => {
+        None
+        | Some(
+            Experiment::Recall
+            | Experiment::HarborOnto
+            | Experiment::HarborReview
+            | Experiment::HarborReviewV2,
+        ) => {
             anyhow::bail!("No experiment construction policy")
         }
     }

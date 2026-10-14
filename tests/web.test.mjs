@@ -3,6 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 const source = await readFile(new URL("../web/app.js", import.meta.url), "utf8");
+const html = await readFile(new URL("../web/index.html", import.meta.url), "utf8");
 const model = "openai/gpt-4.1-mini";
 const seed = { world: { goal: "new task", tools: { public_resources: {} } }, system: "new system", tools: [] };
 const config = { demo: true, actor_model: model, world_model: model, action_limit: 20 };
@@ -53,8 +54,9 @@ async function browser(initial = "", search = "") {
     return elements.get(selector);
   };
   for (const id of ["actor", "generator"]) {
-    element(`#${id}`).value = model;
-    element(`#${id}`).options = [new Option(model)];
+    const initialModel = html.match(new RegExp(`<select id="${id}">\\s*<option value="([^"]+)"`))[1];
+    element(`#${id}`).value = initialModel;
+    element(`#${id}`).options = [new Option(initialModel)];
   }
   element("#context-limit").value = 256000;
   element("#max-tokens").value = element("#generator-max-tokens").value = 1024;
@@ -139,6 +141,8 @@ test("missing saved runs reset local storage and restore editable defaults", asy
 test("new runs reset saved context limits and pending actions disable controls", async () => {
   const b = await browser("first");
   assert.equal(b.element("#context-limit").value, 40000);
+  assert.equal(b.element("#actor").value, model);
+  assert.equal(b.element("#generator").value, model);
   const work = deferred();
   const pending = b.act(() => work.promise);
   assert.equal(b.element("#step").disabled, true);
@@ -150,6 +154,11 @@ test("new runs reset saved context limits and pending actions disable controls",
   assert.equal(b.element("#context-limit").disabled, false);
   assert.equal(b.element("#memory-mode").value, "rolling");
   assert.equal(b.element("#action-format").value, "structured");
+  for (const [role, prefix] of [["actor", ""], ["generator", "generator-"]]) {
+    assert.equal(b.element(`#${role}`).value, "openai/gpt-6.1-sol");
+    assert.equal(b.element(`#${prefix}temperature`).value, "");
+    assert.equal(b.element(`#${prefix}max-tokens`).value, 4096);
+  }
 });
 
 test("incremental polling appends trace once and retains initial evidence", async () => {
@@ -424,6 +433,40 @@ test("story review creates a separate template and preserves it when reopening",
   assert.equal(b.element("#experiment").value, "onto_review");
   assert.match(b.element("#director-policy").textContent, /execute Stories/);
 });
+
+for (const [experiment, template] of [["harbor_review", "harbor-review"], ["harbor_review_v2", "harbor-review-v2"]]) {
+test(`${experiment} saves direct execution separately with fixed source and no generation`, async () => {
+  const b = await browser();
+  const reviewSeed = {...institutionSeed, name: "Harbor Works · Story review", config: {...config, demo: false, structured_actions: true, expansion_limit: 0, memory: null}};
+  b.respond((path) => path === "runs" ? [] : path === "institutions" ? {id: "harbor-review"} : reviewSeed);
+  await b.experiment(experiment);
+  assert.ok(b.requests.some((r) => r.path === `institution-seed?template=${template}`));
+  assert.equal(b.element("#institution-source").readOnly, true);
+  assert.equal(b.element("#institution-actor").disabled, true);
+  assert.equal(b.element("#institution-generation").hidden, true);
+  assert.match(b.element("#director-policy").textContent, /direct Harbor Story execution/);
+  assert.match(b.element("#settings-status").textContent, /\$1.00 · 60 actions/);
+  b.element("#institution-source").value = "tampered source";
+  b.element("#institution-source").oninput();
+  await b.element("#new").onclick();
+  const request = JSON.parse(b.requests.find((r) => r.path === "institutions").options.body);
+  assert.equal(request.template, template);
+  assert.equal(request.generation, undefined);
+  assert.deepEqual(request.institution, institution);
+  assert.equal(request.config.action_limit, 60);
+  assert.equal(request.config.expansion_limit, 0);
+  assert.equal(request.config.call_limit, 90);
+  assert.equal(request.config.dollar_limit, 1);
+  const saved = detail("harbor-review");
+  saved.run.experiment = experiment;
+  saved.run.world = saved.frames[0].world = reviewSeed.world;
+  b.respond((path) => path === "runs" ? [{id: "harbor-review", experiment}] : saved);
+  await b.select("harbor-review");
+  assert.equal(b.element("#experiment").value, experiment);
+  assert.match(b.element("#director-policy").textContent, /direct Harbor Story execution/);
+});
+
+}
 
 test("saved generated runs expose fixed generation settings and restore the correct new template", async () => {
   const b = await browser();

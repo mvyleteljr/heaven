@@ -27,6 +27,8 @@
               <option value="bellwether">Bellwether · Harbor Works (original)</option>
               <option value="institutions">Onto · Accounts</option>
               <option value="harbor_onto">Onto · Harbor Works</option>
+              <option value="harbor_review">Harbor Works · Story review</option>
+              <option value="harbor_review_v2">Harbor Works · Story review v2</option>
               <option value="flowers">Willow & Stem · fixture</option>
               <option value="institutions_generated">Onto · Generated company</option>
               <option value="onto_review">Onto · Story review</option>
@@ -62,7 +64,7 @@
             <h3>Actor <small>OpenRouter</small></h3>
             <label
               >Model<select id="actor">
-                <option value="openai/gpt-4.1-mini">openai/gpt-4.1-mini</option>
+                <option value="openai/gpt-6.1-sol">openai/gpt-6.1-sol</option>
               </select></label
             >
             <label
@@ -72,7 +74,7 @@
                 min="0"
                 max="2"
                 step="0.1"
-                value="0.7"
+                value=""
                 placeholder="Provider default" /></label
             ><label
               >Output token limit<input
@@ -80,7 +82,7 @@
                 type="number"
                 min="1"
                 max="32768"
-                value="1024" /></label
+                value="4096" /></label
             ><label
               >Reasoning effort<select id="reasoning">
                 <option value="">Provider default (omitted)</option>
@@ -97,7 +99,7 @@
             <h3>Generator <small>OpenRouter</small></h3>
             <label
               >Model<select id="generator">
-                <option value="openai/gpt-4.1-mini">openai/gpt-4.1-mini</option>
+                <option value="openai/gpt-6.1-sol">openai/gpt-6.1-sol</option>
               </select></label
             >
             <label
@@ -107,7 +109,7 @@
                 min="0"
                 max="2"
                 step="0.1"
-                value="0.7"
+                value=""
                 placeholder="Provider default"
             /></label>
             <label
@@ -116,7 +118,7 @@
                 type="number"
                 min="1"
                 max="32768"
-                value="1024"
+                value="4096"
             /></label>
             <label
               >Reasoning effort<select id="generator-reasoning">

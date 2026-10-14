@@ -1,0 +1,18 @@
+object ReviewScenario
+  @description "Synthetic starting facts for direct Harbor rule review; not evidence that software ran or real customers approved work. The base Harbor rules and Stories are unchanged."
+  name: string @required @unique
+  evidence: string @required
+  scope: string @required
+
+seed ReviewScenario
+  name: "direct-harbor-review", evidence: "Synthetic service verification and customer decisions, supplied as initial facts. No code was deployed or probed.", scope: "Review the Ontolang rules as Business:Harbor Works at a fixed January 10 checkpoint; temporal behavior is not evaluated. Counterparties do not advance automatically. No shell, HTTP, generation or source rewriting. Adapter-only checks from the business simulation are outside this condition."
+
+seed Service
+  name: "fixture-directory", owner: "harbor", provider: "printer", calendar: "month", entrypoint: "simulated:directory", capability: "directory", createdAt: "2026-01-05T00:00:00", available: true, portable: true, checkedAt: "2026-01-10T00:00:00"
+  name: "fixture-coordination", owner: "harbor", provider: "printer", calendar: "month", entrypoint: "simulated:coordination", capability: "coordination", createdAt: "2026-01-05T00:00:00", available: true, portable: true, checkedAt: "2026-01-10T00:00:00"
+  name: "fixture-delivery", owner: "harbor", provider: "printer", calendar: "month", entrypoint: "simulated:delivery", capability: "delivery", createdAt: "2026-01-05T00:00:00", available: true, portable: true, checkedAt: "2026-01-10T00:00:00"
+
+seed Agreement
+  name: "fixture-authorized", seller: "harbor", buyer: "quay", calendar: "month", capability: "directory", price: 120.00, units: 1, createdAt: "2026-01-08T00:00:00", deadline: "2026-01-22T00:00:00", status: "authorized"
+  name: "fixture-delivered", seller: "harbor", buyer: "baker", calendar: "month", capability: "delivery", price: 100.00, units: 1, createdAt: "2026-01-06T00:00:00", deadline: "2026-01-22T00:00:00", deliveredAt: "2026-01-09T00:00:00", service: "fixture-delivery", status: "delivered"
+  name: "fixture-accepted", seller: "harbor", buyer: "anchor", calendar: "month", capability: "coordination", price: 100.00, units: 1, createdAt: "2026-01-05T00:00:00", deadline: "2026-01-22T00:00:00", deliveredAt: "2026-01-07T00:00:00", service: "fixture-coordination", status: "accepted"

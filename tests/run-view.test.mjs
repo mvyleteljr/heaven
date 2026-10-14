@@ -248,3 +248,13 @@ test("declared agent shape grows with a domain and renders only that checkpoint'
   assert.match(renderWorld(done, null, "ontolang"), /Agent state declaration/);
   assert.match(renderWorld(done, null, "ontolang"), /last_observation/);
 });
+
+test("partial review reports show evidence without inventing an actor action", () => {
+  const report = frame("review_report", { source: "host", partial: true, reason: "budget limit", message: "Partial review: delivery-1 committed. <untested>" });
+  assert.deepEqual(traceFrames({ frames: [report] }), [report]);
+  const html = renderAgent(report, 2, { run: { experiment: "harbor_review_v2" } });
+  assert.match(html, /Harbor Works · Story review v2/);
+  assert.match(html, /class="story-report">Partial review: delivery-1 committed\. &lt;untested&gt;/);
+  assert.doesNotMatch(html, /<summary>Action inputs<\/summary>/);
+  assert.doesNotMatch(html, /<untested>/);
+});

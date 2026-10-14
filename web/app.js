@@ -75,9 +75,9 @@ let agentStateDraft = "";
 let generationPolicy = null;
 let seedExperiment = null;
 const institutionTemplate = (experiment = $("#experiment").value) =>
-  ({ institutions: "accounts", harbor_onto: "harbor", institutions_generated: "generative", onto_review: "story-review" })[experiment] ?? null;
+  ({ institutions: "accounts", harbor_onto: "harbor", harbor_review: "harbor-review", harbor_review_v2: "harbor-review-v2", institutions_generated: "generative", onto_review: "story-review" })[experiment] ?? null;
 const experimentName = (experiment) =>
-  ({ bellwether: "Harbor Works", institutions: "Onto · Accounts", institutions_generated: "Onto · Generated company", onto_review: "Onto · Story review", harbor_onto: "Onto · Harbor Works", flowers: "Flowers for Friday" })[experiment] ?? "World trace";
+  ({ bellwether: "Harbor Works", institutions: "Onto · Accounts", institutions_generated: "Onto · Generated company", onto_review: "Onto · Story review", harbor_review: "Harbor Works · Story review", harbor_review_v2: "Harbor Works · Story review v2", harbor_onto: "Onto · Harbor Works", flowers: "Flowers for Friday" })[experiment] ?? "World trace";
 const displayedExperiment = (run) => run.experiment === "institutions" &&
   (run.world.ontology?.generation || Object.keys(run.world.ontology?.modules ?? {}).length)
   ? "institutions_generated" : run.experiment ?? "flowers";
@@ -151,11 +151,11 @@ function settingsState() {
   const onto = institutionTemplate();
   const runtimeUnavailable = !id && onto && seed?.runtime_available === false;
   $("#new").disabled = !!id || pending || !!editingPrompt || !!runtimeUnavailable;
-  $("#institution-source").readOnly = !!id || pending || onto === "harbor";
-  $("#institution-agent-state").readOnly = !!id || pending || onto === "harbor";
+  $("#institution-source").readOnly = !!id || pending || ["harbor", "harbor-review", "harbor-review-v2"].includes(onto);
+  $("#institution-agent-state").readOnly = !!id || pending || ["harbor", "harbor-review", "harbor-review-v2"].includes(onto);
   $("#institution-file").disabled = pending;
   for (const field of ["institution-actor", "institution-epoch"])
-    $("#" + field).disabled = !!id || pending || onto === "harbor";
+    $("#" + field).disabled = !!id || pending || ["harbor", "harbor-review", "harbor-review-v2"].includes(onto);
   for (const field of ["generation-brief", "generation-max-modules", "generation-repairs"])
     $("#" + field).disabled = !!id || pending;
   $("#runs").disabled = pending || !!editingPrompt;
@@ -170,7 +170,7 @@ function settingsState() {
       : runtimeUnavailable
         ? "Configure the Onto runtime to validate this model. Other experiments remain available."
         : onto
-          ? `Validate & save checks the Ontolang model and creates a paused run. Live run ceiling: ${onto === "accounts" ? "$0.25 · 30 actions" : onto === "generative" ? "$0.50 · 60 actions · 6 expansions" : "$1.00 · 100 actions"}.`
+          ? `Validate & save checks the Ontolang model and creates a paused run. Live run ceiling: ${onto === "accounts" ? "$0.25 · 30 actions" : ["generative", "story-review"].includes(onto) ? "$0.50 · 60 actions · 6 expansions" : ["harbor-review", "harbor-review-v2"].includes(onto) ? "$1.00 · 60 actions · direct Stories" : "$1.00 · 100 actions"}.`
           : "Configure a new run, then validate & save.";
   const working = data?.run.busy || data?.run.status === "running";
   $("#step").disabled = pending || !id || !!working || !!data?.run.world.finished || data?.run.actions >= data?.run.config.action_limit;
@@ -207,6 +207,18 @@ function showSettings(config) {
     field.value = value;
   });
 }
+function resetModelSettings() {
+  for (const [role, prefix] of [["actor", ""], ["generator", "generator-"]]) {
+    const field = $("#" + role);
+    const model = "openai/gpt-6.1-sol";
+    if (!Array.from(field.options).some((o) => o.value === model))
+      field.add(new Option(model, model));
+    field.value = model;
+    $("#" + prefix + "temperature").value = "";
+    $("#" + prefix + "max-tokens").value = 4096;
+    $("#" + prefix + "reasoning").value = "";
+  }
+}
 function frames() {
   return (
     data?.frames || [
@@ -241,6 +253,8 @@ function modelEditor(definition) {
     : "The host fixes the caller identity and enforces the model's Stories and rules.";
   $("#institution-source-note").textContent = id
     ? "Saved model · read-only. Facts and receipts below follow the selected checkpoint."
+    : ["harbor-review", "harbor-review-v2"].includes(institutionTemplate())
+      ? "Authored Harbor rules + synthetic review fixtures · read-only. Direct Stories; customer and verifier identities remain unavailable."
     : institutionTemplate() === "harbor"
       ? "Authored Harbor Works template · read-only. Its counterparties and hosting behavior depend on this model."
       : ["generative", "story-review"].includes(institutionTemplate())
@@ -258,12 +272,12 @@ function generatedInstitutionWorld(institution, previous) {
   const modules = Object.entries(institution.modules ?? {});
   const facts = (state) => (state.snapshot?.instances ?? []).map((fact) =>
     `<details><summary>${esc(fact.id ?? fact.type)}</summary><pre>${esc(pretty(fact))}</pre></details>`).join("");
-  return `<div class="node root"><strong>Company foundation</strong><span>${modules.length} generated capabilities · shared commitments are read-only</span>${facts(institution)}</div>` +
+  return `<div class="node root"><strong>Company foundation</strong><span>${modules.length} capabilities · shared commitments are read-only</span>${facts(institution)}</div>` +
     modules.map(([name, module]) => {
       const before = previous?.modules?.[name];
       const receipts = Object.values(module.receipts ?? {});
       const accepted = receipts.filter((r) => r.result?.committed).length;
-      return `<div class="node ${pretty(before) !== pretty(module) ? "changed" : ""}"><strong>${esc(name)}</strong><span>${module.snapshot?.instances?.length ?? 0} facts · ${accepted} accepted / ${receipts.length} recorded commands</span><details><summary>Current facts</summary>${facts(module)}</details><details><summary>Executable operations</summary><pre>${esc(pretty(module.stories))}</pre></details><details><summary>Command receipts</summary><pre>${esc(pretty(module.receipts ?? {}))}</pre></details><details><summary>Generated Onto source</summary><pre>${esc(Object.entries(module.definition?.source ?? {}).map(([file, source]) => file + "\n" + source).join("\n\n"))}</pre></details></div>`;
+      return `<div class="node ${pretty(before) !== pretty(module) ? "changed" : ""}"><strong>${esc(name)}</strong><span>${module.snapshot?.instances?.length ?? 0} facts · ${accepted} accepted / ${receipts.length} recorded commands</span><details><summary>Current facts</summary>${facts(module)}</details><details><summary>Executable operations</summary><pre>${esc(pretty(module.stories))}</pre></details><details><summary>Command receipts</summary><pre>${esc(pretty(module.receipts ?? {}))}</pre></details><details><summary>Ontolang source</summary><pre>${esc(Object.entries(module.definition?.source ?? {}).map(([file, source]) => file + "\n" + source).join("\n\n"))}</pre></details></div>`;
     }).join("") + (modules.length ? "" : '<div class="node missing">Capabilities appear here as the actor discovers them.</div>');
 }
 function institutionWorld(ontology, elapsed) {
@@ -303,7 +317,8 @@ function render() {
     : seed.description ?? (seed.world.business ? "Original Harbor Works · Rust business simulation." : "");
   $("#system").textContent = data?.initial.actor_instructions ?? prompts.system;
   $("#director-policy").textContent = definition
-    ? (data?.run.experiment ?? $("#experiment").value) === "onto_review" ? "Onto · inspect, execute Stories and compile model additions; no shell or general HTTP"
+    ? ["harbor_review", "harbor_review_v2"].includes(data?.run.experiment ?? $("#experiment").value) ? "Onto · direct Harbor Story execution; synthetic fixtures; no shell, HTTP or generation"
+      : (data?.run.experiment ?? $("#experiment").value) === "onto_review" ? "Onto · inspect, execute Stories and compile model additions; no shell or general HTTP"
       : generationSettings ? "Onto · generate executable capabilities as they are discovered; preserve the shared foundation"
       : institutionTemplate() === "harbor" ? "Onto · authored commercial rules, hosting & counterparties" : "Onto · authored account rules & public facts"
     : frame.world.business
@@ -535,6 +550,7 @@ async function refresh() {
       rememberRun();
       await loadSeed("bellwether");
       if (version !== refreshVersion || id) return;
+      if (!seed.config) resetModelSettings();
     }
     $("#runs").innerHTML =
       '<option value="">New run — configure</option><optgroup label="Inspect saved run">' +
@@ -591,6 +607,7 @@ async function create() {
   }
   const business = experiment === "bellwether" || template === "harbor";
   const generative = ["generative", "story-review"].includes(template);
+  const harborReview = ["harbor-review", "harbor-review-v2"].includes(template);
   if (template && seed.runtime_available === false)
     throw Error("Configure the Onto runtime before validating this model.");
   if (generative) {
@@ -621,9 +638,9 @@ async function create() {
     },
     provider: "openai",
     demo: template ? false : $("#mode").value === "true",
-    action_limit: business ? 100 : generative ? 60 : template ? 30 : 20,
-    expansion_limit: generative ? 6 : 10,
-    call_limit: business ? 120 : generative ? 90 : template ? 180 : 40,
+    action_limit: business ? 100 : generative || harborReview ? 60 : template ? 30 : 20,
+    expansion_limit: harborReview ? 0 : generative ? 6 : 10,
+    call_limit: business ? 120 : generative || harborReview ? 90 : template ? 180 : 40,
     dollar_limit: template === "accounts" ? 0.25 : generative ? 0.5 : 1,
     context_limit_bytes: Number($("#context-limit").value),
     memory: $("#memory-mode").value === "rolling" ? {recent_entries:12,max_summary_bytes:8000} : null,
@@ -675,6 +692,7 @@ async function startDraft(experiment) {
     $("#runs").value = id || "";
     throw e;
   }
+  if (id && !seed.config) resetModelSettings();
   id = null;
   data = null;
   $("#runs").value = "";
