@@ -192,17 +192,69 @@
           "seq": 19
         }
       ]
+    },
+    {
+      "condition": "D",
+      "run_id": "38eb08c7-17c7-4d55-98c9-c64779853ec1",
+      "status": "error",
+      "spending": {
+        "calls_including_inherited": 4,
+        "calls_recorded_on_this_branch": {
+          "actor": 2,
+          "world": 2
+        },
+        "charged_usd": 0.077560375,
+        "limit_usd": 4.35,
+        "uncertain_reserved_usd": 2.7755575615628914e-17
+      },
+      "construction": {
+        "attempts_including_inherited": 1,
+        "published_on_this_branch": 0,
+        "rejected_on_this_branch": 1,
+        "timings": []
+      },
+      "integrity": {
+        "attempted_actions": 2,
+        "completed_observations": 2,
+        "events_contiguous": true,
+        "last_event_matches_run": true,
+        "memory_prefix_valid": true,
+        "unresolved_action_attempts": 0
+      },
+      "failures": [
+        {
+          "kind": "inference_failure",
+          "message": "Model output was truncated at the output token limit; increase max_tokens for a new run",
+          "phase": "output",
+          "role": "world",
+          "seq": 19
+        },
+        {
+          "kind": "construction_rejected",
+          "message": "Model output was truncated at the output token limit; increase max_tokens for a new run",
+          "phase": null,
+          "role": null,
+          "seq": 20
+        },
+        {
+          "kind": "error",
+          "message": "Model output was truncated at the output token limit; increase max_tokens for a new run",
+          "phase": null,
+          "role": null,
+          "seq": 22
+        }
+      ]
     }
   ],
   "active_launch": {
-    "run_id": "38eb08c7-17c7-4d55-98c9-c64779853ec1",
-    "url": "http://127.0.0.1:3000/?run=38eb08c7-17c7-4d55-98c9-c64779853ec1",
-    "started_at": "2026-10-14T16:47:31.806542+00:00",
+    "run_id": "8602b0a9-eb0b-4d2d-bc0e-24dc8a4ecd5e",
+    "url": "http://127.0.0.1:3000/?run=8602b0a9-eb0b-4d2d-bc0e-24dc8a4ecd5e",
+    "started_at": "2026-10-14T16:52:08.884663+00:00",
     "source_sha256": "c1c94efc186017d049c35b7454ef82144f1dcdadd7c94c7500eadc82327047f1",
     "authorized_total_usd": 5,
-    "previous_attempts_accounted_usd": 0.571180375,
-    "run_cap_usd": 4.35,
-    "condition": "GPT-4.1 actor; GPT-5.4 Mini generator, medium reasoning, 16384 output tokens; same pinned grammar and task",
+    "previous_attempts_accounted_usd": 0.64874075,
+    "run_cap_usd": 4.3,
+    "condition": "GPT-4.1 actor; Claude Haiku 4.5 generator with 8192 output tokens; same pinned grammar and task",
     "status": "running"
   }
 }

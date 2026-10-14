@@ -145,22 +145,22 @@ requiring every department and capability to be implemented in advance.
 ## Watching the open-discovery experiment
 
 `examples/jit/open-discovery-watch.json` is the next condition: live GPT-4.1
-actor and GPT-5.4 Mini generator (medium reasoning, 16,384 output tokens), rolling memory, up to 100 actions / 160 total calls / eight
+actor and Claude Haiku 4.5 generator (8,192 output tokens), rolling memory, up to 100 actions / 160 total calls / eight
 construction attempts, two validation repairs per attempt, and a separately
 user-authorized **$5 total for this experiment**. The current condition has a
-$4.35 cap after the first three attempts used $0.571180375 combined. It asks the actor to choose three capabilities,
+$4.30 cap after the first four attempts used $0.64874075 combined. It asks the actor to choose three capabilities,
 compare operations before/after local policy changes, seek counterexamples,
 revisit prior state and write `/workspace/transformation-report.md`. Neither
 capability names nor business outcome are prescribed. Completion and business
 improvement are not assumed.
 
-The active October 14 condition is `38eb08c7-17c7-4d55-98c9-c64779853ec1` in the normal
-Compose database. [Watch locally](http://127.0.0.1:3000/?run=38eb08c7-17c7-4d55-98c9-c64779853ec1).
+The active October 14 condition is `8602b0a9-eb0b-4d2d-bc0e-24dc8a4ecd5e` in the normal
+Compose database. [Watch locally](http://127.0.0.1:3000/?run=8602b0a9-eb0b-4d2d-bc0e-24dc8a4ecd5e).
 The viewer now shows generated capabilities, facts, executable operations,
 source, institutional changes, call counts and charged + reserved spending.
 It polls automatically. Pause finishes the in-flight action; the scrubber
 inspects history, and Latest resumes following the trace. The initial run
-manifest is `data/audits/open-discovery-d-watch.json`; consult the live
+manifest is `data/audits/open-discovery-e-watch.json`; consult the live
 audit endpoint for current status. This section records launch, not a passing
 result. Do not restart the server or change its experiment configuration while
 it runs. The run ends on completion, a configured limit or a fatal error.
@@ -168,7 +168,7 @@ it runs. The run ends on completion, a configured limit or a fatal error.
 For another checkout, create a fresh run by POSTing the example JSON to
 `/api/institutions` with `Content-Type: application/json` and
 `X-Frontier-Client: research-ui`, then open `/?run=RETURNED_ID` and click Run.
-Agree on the budget first; the saved example allows paid inference up to $4.35.
+Agree on the budget first; the saved example allows paid inference up to $4.30.
 
 The first condition (`969763d0-436d-49cf-953b-935fea2dcf86`) is preserved paused:
 4 actor calls and 9 generator calls, three rejected constructions, no modules.
@@ -179,9 +179,15 @@ failed eight constructions. It is preserved paused at $0.45587, with no modules.
 The third condition (`ea35c324-a67c-4943-abb5-3d9b687fad80`) kept the grammar
 and changed the generator to GPT-5.4 Mini with high reasoning. It stopped after
 using all 8,192 output tokens on reasoning, returning no source ($0.026650375).
-The fourth condition gives that generator medium reasoning and 16,384 output
-tokens. Configurable output limits now extend to 32,768, subject to endpoint
-support and the unchanged maximum-cost reservation and dollar limit checks. Do not resume earlier conditions alongside
+The fourth condition (`38eb08c7-17c7-4d55-98c9-c64779853ec1`) gave that
+generator medium reasoning and 16,384 output tokens. It produced source with
+an invalid boolean rule, then exhausted its output tokens during repair
+($0.077560375). The fifth condition switches only generator family/settings
+to Claude Haiku 4.5, keeping the actor, task, grammar and validation unchanged. Configurable output limits now extend to 32,768, subject to endpoint
+support and the unchanged maximum-cost reservation and dollar limit checks.
+Final free checks passed: 49 core Rust tests, 7 web tests, formatting, Clippy
+and Linux sandbox doctor; optional generator/repair tests also passed after
+the grammar change. Do not resume earlier conditions alongside
 it against the same $5 allowance. See `examples/jit/open-discovery-status.json`
 for launch and stopped-condition evidence; query the API for current status.
 
