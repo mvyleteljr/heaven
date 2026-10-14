@@ -1,0 +1,10 @@
+{
+  "run_id": "275c1d6e-0f0f-48e0-9b95-0b11c04c25a6",
+  "status_at_launch": "running",
+  "new_run_cap_usd": 8.03,
+  "total_authorization_usd": 10,
+  "prior_charged_usd": 1.175162,
+  "prior_uncertain_reserved_usd": 0.790212,
+  "previous_run": "7cec99bf-4179-4b34-9517-d11d79b8d5d7",
+  "condition": "Fresh world/history, same models and generator brief; no actor-facing generation explanation or private generation policy."
+}

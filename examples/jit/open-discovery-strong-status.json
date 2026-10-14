@@ -41,6 +41,9 @@
       "dollar_limit": 9.19,
       "demo": false
     },
-    "note": "Launched; query saved run for current state. No success criterion imposed."
+    "note": "Paused deliberately at user request to run a fresh condition without generation disclosure.",
+    "status": "paused",
+    "charged_usd": 1.1643675,
+    "uncertain_reserved_usd": 0
   }
 }

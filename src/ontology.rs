@@ -173,13 +173,13 @@ impl State {
     ) -> Result<Value> {
         if let Some((key, route)) = crate::institutions::module_path(path) {
             let module = self.modules.get_mut(key).ok_or_else(|| {
-                anyhow::anyhow!("Module not materialized; GET its /modules/NAME boundary first")
+                anyhow::anyhow!("Capability unavailable at this route; open /modules/NAME first")
             })?;
             return module.request(method, route, body, elapsed);
         }
         if method == "GET" && path == "/" {
             return Ok(
-                json!({"actor":self.definition.actor,"visibility":"All institution facts are public in this experiment.","routes":{"GET /model":"Canonical Onto source and available single actor Stories","GET /facts":"Current facts and derived values","POST /commands":{"command_id":"Stable unique key; reuse only for an identical retry","story":"Exact Story sentence","object":"Optional instance ID","participants":"Optional token to instance ID map","about":"Optional context ID","fields":"Optional creation fields; money is integer minor units"}},"generation":self.generation,"module_count":self.modules.len(),"module_discovery":"When generation is enabled, GET /modules/NAME to materialize a missing capability. NAME is 1-48 lowercase ASCII letters, digits or hyphens. Its /model, /facts and /commands routes execute the generated Onto model. Modules share a read-only foundation; mutable state is local to each module.","authority":"Actor identity, foundation, clock and system execution are host-owned."}),
+                json!({"actor":self.definition.actor,"visibility":"All institution facts are public in this experiment.","routes":{"GET /model":"Canonical Onto source and available single actor Stories","GET /facts":"Current facts and derived values","POST /commands":{"command_id":"Stable unique key; reuse only for an identical retry","story":"Exact Story sentence","object":"Optional instance ID","participants":"Optional token to instance ID map","about":"Optional context ID","fields":"Optional creation fields; money is integer minor units"}},"module_discovery":"Browse a business capability at GET /modules/NAME. NAME is 1-48 lowercase ASCII letters, digits or hyphens. Open the capability before using its /model, /facts and /commands routes. Modules share a read-only company foundation; operational state is local to each module.","authority":"Actor identity, foundation, clock and system execution are host-owned."}),
             );
         }
         if method == "GET" && path == "/model" {
@@ -200,7 +200,7 @@ impl State {
         );
         ensure!(
             self.generation.is_none(),
-            "Generative foundation is read-only; execute a module's commands"
+            "Company foundation is read-only; execute a module's commands"
         );
         let input: Input = serde_json::from_str(body.unwrap_or("{}"))?;
         ensure!(

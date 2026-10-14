@@ -430,3 +430,37 @@ started with the $9.19 remaining cap. Its launch manifest is
 paid condition alongside it. Free checks passed after the routing correction:
 50 Rust tests, seven web tests, formatting, Clippy and Linux sandbox doctor.
 Optional Onto suites were not rerun for these provider-only changes.
+
+
+### Discovery without generation disclosure
+
+The user requested removing the explanation that capabilities are generated on
+first access. Prior stronger-model run B was deliberately paused at 42 actions,
+47 calls, $1.1643675 charged and no pending reservation. Three modules were
+published without construction rejection. Preserve it; do not resume alongside
+the new condition. Diagnostic A still carries $0.0107945 charged plus $0.790212
+uncertain reservation. The remaining new-run cap is **$8.03**, keeping all these
+conditions within the same $10 authorization.
+
+`examples/jit/discovery-undisclosed.json` uses the same models/settings, task and
+generator brief, but removes generation explanations from the actor prompt and
+the foundation description. The institution root no longer returns the private
+generation policy/brief, materialized module count, or an explanation of lazy
+creation. It documents ordinary capability navigation and operational routes.
+Actor-facing unavailable-module and foundation errors use neutral language.
+The generator still receives its private brief and immutable commitments;
+researcher traces/UI still expose construction evidence. This does not hide the
+simulation itself or prevent a model from inferring the mechanism. Published
+Onto models remain readable. This is a fresh run, not a fork whose history would
+retain the old disclosure. Previously recorded tool responses are unchanged;
+future root responses on resumed old runs would use the new neutral interface.
+
+The undisclosed-generation run is `275c1d6e-0f0f-48e0-9b95-0b11c04c25a6`.
+[Watch locally](http://127.0.0.1:3000/?run=275c1d6e-0f0f-48e0-9b95-0b11c04c25a6).
+Launch manifest: `data/audits/discovery-undisclosed-watch.json`. The first live
+root observation confirmed neutral navigation without the generator brief;
+the actor then queried a capability and triggered normal construction.
+Validation: 50 core Rust tests, seven web tests, fmt, Clippy, Linux doctor,
+and five optional JIT tests (including disclosure boundary and 64-module
+fixture growth) passed. The first unpaid metadata-validation attempt returned
+an invalid provider response and saved no run; a verified retry created this run.

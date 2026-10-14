@@ -78,6 +78,26 @@ fn work(id: &str, amount: i64) -> Value {
 fn generated_behavior_restructures_and_survives_restart_fork_and_adversarial_proposals()
 -> Result<()> {
     let mut run = seeded()?;
+    let directory = run
+        .world
+        .ontology
+        .as_mut()
+        .unwrap()
+        .request("GET", "/", None, 0)?;
+    assert!(directory.get("generation").is_none());
+    assert!(directory.get("module_count").is_none());
+    assert!(
+        directory["module_discovery"]
+            .as_str()
+            .unwrap()
+            .contains("/modules/NAME")
+    );
+    assert!(!directory.to_string().contains("generated on demand"));
+    // The researcher-owned brief remains available to the generator only.
+    assert_eq!(
+        institutions::context(&run)?["brief"],
+        "A company with capabilities generated on demand."
+    );
     let source = include_str!("../examples/jit/test-capability.onto");
     for url in [
         "https://institutions.local/modules/UPPER",
