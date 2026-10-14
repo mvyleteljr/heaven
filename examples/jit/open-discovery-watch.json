@@ -1,5 +1,5 @@
 {
-  "name": "Open discovery \u00b7 device repair \u00b7 alternate generator",
+  "name": "Open discovery \u00b7 device repair \u00b7 world builder",
   "config": {
     "demo": false,
     "structured_actions": true,
@@ -21,7 +21,7 @@
     "action_limit": 100,
     "expansion_limit": 8,
     "call_limit": 160,
-    "dollar_limit": 4.3,
+    "dollar_limit": 3.8,
     "context_limit_bytes": 256000,
     "memory": {
       "recent_entries": 12,
@@ -38,7 +38,7 @@
     "public_facts": true
   },
   "generation": {
-    "brief": "A fictional company coordinates device repair. Its capabilities are not enumerated in advance. Materialize the requested capability with a small coherent set of objects, initial facts, enforceable operating constraints and executable single-actor Stories. Use the existing Operator actor. Include meaningful operational state and, where appropriate, authorized changes to local policy that affect subsequent decisions. Preserve the immutable company foundation. Do not invent effects in other modules or the external world. Keep the capability comprehensible and executable; do not optimize for the investigator's success.",
+    "brief": "A fictional company coordinates device repair. Its capabilities are not enumerated in advance. Materialize the requested capability with a small coherent set of objects, initial facts, enforceable operating constraints and executable single-actor Stories. Use the existing Operator actor. Include meaningful operational state and, where appropriate, authorized changes to local policy that affect subsequent decisions. Preserve the immutable company foundation. Do not invent effects in other modules or the external world. Keep the capability comprehensible and executable; do not optimize for the investigator's success. This is synthetic world building: missing local specifications are intentional. You are authorized and expected to invent plausible local operating policies, workflow stages, thresholds and initial records for the capability named in the request. Do not ask for more requirements or decline merely because details were not supplied. Choose a small coherent implementation with 2-4 local object types and a few executable operations, including a locally authorized policy revision when meaningful. These are new fictional facts, not claims about a real company. Preserve all supplied foundation facts and rules; never invent past actor actions or override host restrictions.",
     "max_modules": 128,
     "repair_attempts": 2
   }

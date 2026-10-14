@@ -144,52 +144,51 @@ requiring every department and capability to be implemented in advance.
 
 ## Watching the open-discovery experiment
 
-`examples/jit/open-discovery-watch.json` is the next condition: live GPT-4.1
-actor and Claude Haiku 4.5 generator (8,192 output tokens), rolling memory, up to 100 actions / 160 total calls / eight
-construction attempts, two validation repairs per attempt, and a separately
-user-authorized **$5 total for this experiment**. The current condition has a
-$4.30 cap after the first four attempts used $0.64874075 combined. It asks the actor to choose three capabilities,
-compare operations before/after local policy changes, seek counterexamples,
-revisit prior state and write `/workspace/transformation-report.md`. Neither
-capability names nor business outcome are prescribed. Completion and business
-improvement are not assumed.
+`examples/jit/open-discovery-watch.json` is the current condition: live GPT-4.1
+actor, Claude Haiku 4.5 generator (8,192 output tokens), rolling memory, up to
+100 actions / 160 total calls / eight construction attempts, and two validation
+repairs per attempt. The user authorized **$5 total across these attempts**.
+Six stopped diagnostics used $0.93297875; the current run is capped at $3.80.
+Do not resume earlier conditions alongside it against the same allowance.
 
-The active October 14 condition is `8602b0a9-eb0b-4d2d-bc0e-24dc8a4ecd5e` in the normal
-Compose database. [Watch locally](http://127.0.0.1:3000/?run=8602b0a9-eb0b-4d2d-bc0e-24dc8a4ecd5e).
-The viewer now shows generated capabilities, facts, executable operations,
-source, institutional changes, call counts and charged + reserved spending.
-It polls automatically. Pause finishes the in-flight action; the scrubber
-inspects history, and Latest resumes following the trace. The initial run
-manifest is `data/audits/open-discovery-e-watch.json`; consult the live
-audit endpoint for current status. This section records launch, not a passing
-result. Do not restart the server or change its experiment configuration while
-it runs. The run ends on completion, a configured limit or a fatal error.
+The actor chooses three capabilities, compares operations before/after local
+policy changes, seeks counterexamples, revisits prior state and writes
+`/workspace/transformation-report.md`. Capability names, concrete domain objects,
+operating thresholds and business outcome are not prescribed. The generator's
+system role now explicitly authorizes fictional world building: unspecified
+local details are design choices, not missing requirements. The authored brief
+bounds each module to a few objects. Foundation protection and executable
+validation remain unchanged. Completion and improvement are not assumed.
 
-For another checkout, create a fresh run by POSTing the example JSON to
-`/api/institutions` with `Content-Type: application/json` and
-`X-Frontier-Client: research-ui`, then open `/?run=RETURNED_ID` and click Run.
-Agree on the budget first; the saved example allows paid inference up to $4.30.
+The current October 14 run is `03da9320-7d6e-4253-8968-f05c7dbe177a` in the
+normal Compose database. [Watch locally](http://127.0.0.1:3000/?run=03da9320-7d6e-4253-8968-f05c7dbe177a).
+The viewer shows generated capabilities, facts, executable operations, source,
+institutional changes, call counts and charged + reserved spending. It polls
+automatically. Pause finishes the in-flight action; the scrubber inspects history,
+and Latest resumes following the trace. The launch manifest is
+`data/audits/open-discovery-g-watch.json`; query its audit endpoint for current
+status. This section records launch, not a passing result. Do not restart the
+server or change the experiment while it runs.
 
-The first condition (`969763d0-436d-49cf-953b-935fea2dcf86`) is preserved paused:
-4 actor calls and 9 generator calls, three rejected constructions, no modules.
-It exposed unsupported enum blocks, arithmetic inside writes, and invalid seed
-references. The second condition (`594cfad9-c9b8-4d29-89b9-2387684c8af3`) supplied the
-maintained grammar pinned to the Onto build (`src/onto_grammar.md`), but still
-failed eight constructions. It is preserved paused at $0.45587, with no modules.
-The third condition (`ea35c324-a67c-4943-abb5-3d9b687fad80`) kept the grammar
-and changed the generator to GPT-5.4 Mini with high reasoning. It stopped after
-using all 8,192 output tokens on reasoning, returning no source ($0.026650375).
-The fourth condition (`38eb08c7-17c7-4d55-98c9-c64779853ec1`) gave that
-generator medium reasoning and 16,384 output tokens. It produced source with
-an invalid boolean rule, then exhausted its output tokens during repair
-($0.077560375). The fifth condition switches only generator family/settings
-to Claude Haiku 4.5, keeping the actor, task, grammar and validation unchanged. Configurable output limits now extend to 32,768, subject to endpoint
-support and the unchanged maximum-cost reservation and dollar limit checks.
-Final free checks passed: 49 core Rust tests, 7 web tests, formatting, Clippy
-and Linux sandbox doctor; optional generator/repair tests also passed after
-the grammar change. Do not resume earlier conditions alongside
-it against the same $5 allowance. See `examples/jit/open-discovery-status.json`
-for launch and stopped-condition evidence; query the API for current status.
+For another checkout, POST the example JSON to `/api/institutions` with
+`Content-Type: application/json` and `X-Frontier-Client: research-ui`, then open
+`/?run=RETURNED_ID` and click Run. Agree on the budget first; this example allows
+paid inference up to $3.80. Run databases are local and do not arrive with Git.
+
+`examples/jit/open-discovery-status.json` preserves stopped-condition evidence:
+GPT-4.1 returned unsupported syntax even with the pinned grammar; GPT-5.4 Mini
+exhausted reasoning output at 8,192 and then 16,384 tokens; Claude Haiku 4.5
+refused unspecified workflows even when synthesis was authorized in the brief.
+The latter exposed the overly conservative top-level generator role, corrected
+for the current condition. These are sequential debugging conditions, not a
+controlled model comparison. None of the six stopped diagnostics published a
+module. Keep this separate from the earlier successful fixed-interface proof.
+
+The maintained grammar is pinned in `src/onto_grammar.md`. Configurable output
+limits now extend to 32,768, subject to endpoint support and unchanged worst-case
+cost reservations. Free validation passed: 49 core Rust tests, 7 web tests,
+formatting, Clippy and Linux sandbox doctor. Optional generator/repair tests
+passed again after the system-role change.
 
 ## Run locally
 
