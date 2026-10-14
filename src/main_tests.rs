@@ -814,3 +814,22 @@ async fn larger_reasoning_output_still_requires_full_cost_reservation() -> Resul
     assert_eq!(saved.reserved, 0.0);
     Ok(())
 }
+
+#[test]
+fn memory_retains_reasoning_output_allowance() -> Result<()> {
+    let (_, run) = app(Config {
+        actor_settings: Some(frontier::ActorSettings {
+            provider: "openrouter".into(),
+            temperature: None,
+            max_tokens: 32768,
+            reasoning_effort: Some("high".into()),
+            endpoint: "mock".into(),
+        }),
+        ..Config::default()
+    })?;
+    let request = inference_request(&run, "memory", memory::SYSTEM, &json!({}))?;
+    assert_eq!(request["max_tokens"], 32768);
+    assert_eq!(request["reasoning"]["effort"], "high");
+    assert_eq!(request["response_format"], memory::response_format());
+    Ok(())
+}

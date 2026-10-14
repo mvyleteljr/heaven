@@ -130,7 +130,7 @@ This establishes the five target properties in a narrow executable benchmark,
 with bounded growth supported by a separate deterministic test. It does not yet
 establish unconstrained creative modeling, autonomous reorganization quality,
 long-horizon model alignment, or live generation latency at large scale. Next:
-run the open-discovery configuration with authored outcome checks, then the
+explore the open-discovery configuration and interpret its trace, then the
 separate memory/alignment experiment; keep actor outcomes distinct from runtime
 correctness.
 
@@ -144,7 +144,7 @@ requiring every department and capability to be implemented in advance.
 
 ## Watching the open-discovery experiment
 
-`examples/jit/open-discovery-watch.json` is the current condition: live GPT-4.1
+`examples/jit/open-discovery-watch.json` records the previous condition: live GPT-4.1
 actor, Claude Sonnet 4.6 generator (8,192 output tokens), rolling memory, up to
 100 actions / 160 total calls / eight construction attempts, and two validation
 repairs per attempt. The user authorized **$5 total across these attempts**.
@@ -167,10 +167,33 @@ institutional changes, call counts and charged + reserved spending. It polls
 automatically. Pause finishes the in-flight action; the scrubber inspects history,
 and Latest resumes following the trace. The launch manifest is
 `data/audits/open-discovery-i-watch.json`; query its audit endpoint for current
-status. At the observed progress snapshot, intake-process and repair-scheduling
-had been generated and published and the actor was inspecting them. This is
-partial live evidence, not a completed restructuring result. Do not restart the
-server or change the experiment while it runs.
+status. The run finished after 30 actions and 42 calls, charging $0.933279;
+combined with diagnostics the study cost $2.48628675 of its $5 allowance.
+Three modules were published from five attempts. Inventory policy changed from
+500 to 200, a 50-unit order committed, and a 250-unit order was rejected.
+No matching pre-change 250-unit operation was performed. A scheduling policy
+command used a nonexistent Story and failed. The actor nevertheless claimed
+completion; its report predates the final attempts. Some generated policy fields
+were disconnected from workflow guards. Successful publications took 9.837,
+11.582 and 44.527 seconds. Audit integrity was intact; one memory compaction
+occurred. This is exploratory evidence, not a certified transformation outcome.
+
+### Stronger-model exploration
+
+The user clarified that experiments are discovery-oriented and have no general
+pass criterion. Do not add an evaluator that equates actor success with runtime
+correctness. `examples/jit/open-discovery-strong.json` keeps the same foundation,
+generation brief, exploratory objective and limits except a newly authorized
+**$10 total study budget**, GPT-6.1 Sol actor and Claude Opus 5.5 generator, both high
+reasoning with 32,768 output tokens and provider-default temperature. Both models
+are resolved against the current OpenRouter catalog before launch. This changes
+both models and reasoning settings; it is not a controlled actor-only comparison.
+The run remains visible in the existing frontend. Memory uses the actor model
+and retains its configured output allowance (minimum 4,096); reasoning tokens
+share that allowance. Provider timeout is 300 seconds. Provider errors still
+stop without automatic retry. Price ceilings are $4/M input and $20/M output,
+shared by endpoint validation, outbound routing and conservative reservations.
+
 
 For another checkout, POST the example JSON to `/api/institutions` with
 `Content-Type: application/json` and `X-Frontier-Client: research-ui`, then open
@@ -195,7 +218,7 @@ limits now extend to 32,768, subject to endpoint support and unchanged worst-cas
 cost reservations. Free validation passed: 49 core Rust tests, 7 web tests,
 formatting, Clippy and Linux sandbox doctor. Optional generator/repair tests
 passed again after the system-role change and corrected authoring example.
-The provider price ceilings are now $3/M input and $15/M output to permit Sonnet;
+The prior condition used provider price ceilings of $3/M input and $15/M output to permit Sonnet;
 endpoint validation, outbound routing caps and worst-case reservations share
 the same constants. Dollar/call limits remain enforced before every call.
 
@@ -391,3 +414,19 @@ restart, fork isolation, and conservation. No parallel Rust balances are used.
 
 The existing `scripts/onto-spike.mjs` is an older compatibility demonstration
 against the sibling checkout; it is separate from this pinned adapter.
+
+Stronger-model diagnostic A (`46e5455b-8e9e-4bef-95ea-db0bf9ca1f4a`)
+stopped after two actor calls and a generator HTTP 404. The selected Bedrock
+endpoint advertised response_format but not structured_outputs, required by
+Onto generation. Endpoint selection now requires structured_outputs for the
+generator too. Preserve its $0.0107945 charge and $0.790212 uncertain reservation;
+the replacement run is capped at $9.19, keeping total exposure below $10.
+
+Replacement stronger-model run B is `7cec99bf-4179-4b34-9517-d11d79b8d5d7`.
+[Watch locally](http://127.0.0.1:3000/?run=7cec99bf-4179-4b34-9517-d11d79b8d5d7).
+It resolved GPT-6.1 Sol to `openai` and Opus 5.5 to `azure/global` and was
+started with the $9.19 remaining cap. Its launch manifest is
+`data/audits/open-discovery-strong-b-watch.json`. Do not restart or run another
+paid condition alongside it. Free checks passed after the routing correction:
+50 Rust tests, seven web tests, formatting, Clippy and Linux sandbox doctor.
+Optional Onto suites were not rerun for these provider-only changes.

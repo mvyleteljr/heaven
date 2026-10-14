@@ -495,21 +495,21 @@
   },
   "diagnostic_caveat": "Conditions B-H included an incorrect quoted-enum declaration example in Frontier guidance; corrected in I and a real-interpreter lifecycle/timestamp example test was added. These sequential debugging conditions are not a controlled model comparison.",
   "observed_progress": {
-    "run_id": "22f5fa76-5e42-43dc-9473-c676cb2b7673",
-    "status": "running",
+    "status": "finished",
     "spending": {
-      "calls_including_inherited": 24,
+      "calls_including_inherited": 42,
       "calls_recorded_on_this_branch": {
-        "actor": 13,
+        "actor": 30,
+        "memory": 1,
         "world": 11
       },
-      "charged_usd": 0.4987949999999999,
+      "charged_usd": 0.9332789999999996,
       "limit_usd": 3.0,
-      "uncertain_reserved_usd": 0.2338260000000001
+      "uncertain_reserved_usd": 1.1102230246251563e-16
     },
     "construction": {
       "attempts_including_inherited": 5,
-      "published_on_this_branch": 2,
+      "published_on_this_branch": 3,
       "rejected_on_this_branch": 2,
       "timings": [
         {
@@ -523,17 +523,25 @@
           "request_bytes": 30448,
           "seq": 72,
           "validation_ms": 108
+        },
+        {
+          "latency_ms": 44527,
+          "request_bytes": 30440,
+          "seq": 118,
+          "validation_ms": 326
         }
       ]
     },
     "integrity": {
-      "attempted_actions": 13,
-      "completed_observations": 12,
+      "attempted_actions": 30,
+      "completed_observations": 30,
       "events_contiguous": true,
       "last_event_matches_run": true,
       "memory_prefix_valid": true,
-      "unresolved_action_attempts": 1
+      "unresolved_action_attempts": 0
     },
-    "note": "Snapshot during active run, not final outcome."
-  }
+    "run_id": "22f5fa76-5e42-43dc-9473-c676cb2b7673",
+    "note": "Final trace: policy 500->200; order 50 accepted, 250 rejected; no pre-change comparison; scheduling change failed; actor report stale. Exploration, not a pass verdict."
+  },
+  "final_study_charged_usd": 2.48628675
 }

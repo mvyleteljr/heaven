@@ -152,7 +152,7 @@ async fn main() -> Result<()> {
     let app = App {
         store: Arc::new(Mutex::new(store)),
         client: reqwest::Client::builder()
-            .timeout(Duration::from_secs(90))
+            .timeout(Duration::from_secs(300))
             .build()?,
         key: std::env::var("OPENROUTER_API_KEY")
             .ok()
@@ -530,8 +530,10 @@ async fn validate_actor(app: &App, config: &mut Config) -> Result<()> {
             catalog["data"]["id"] == *model,
             "OpenRouter model ID did not match"
         );
-        if role == "Actor"
-            && (config.structured_actions || config.memory.is_some())
+        // Generated Onto source also uses json_schema, not just json_object.
+        // response_format alone does not guarantee that an endpoint supports it.
+        if (role == "Generator"
+            || (role == "Actor" && (config.structured_actions || config.memory.is_some())))
             && let Some(endpoints) = catalog["data"]["endpoints"].as_array_mut()
         {
             endpoints.retain(|e| {
@@ -1358,7 +1360,8 @@ fn inference_request(run: &Run, role: &str, system: &str, input: &Value) -> Resu
         ));
     }
     if role == "memory" {
-        request["max_tokens"] = json!(4096);
+        // Reasoning consumes the same output allowance as the memory JSON.
+        request["max_tokens"] = json!(request["max_tokens"].as_u64().unwrap().max(4096));
         request["response_format"] = memory::response_format();
     }
     if role == "world" && input["directive"]["requirements"]["functionality"] == "onto.module.v1" {

@@ -189,8 +189,8 @@ pub struct ActorSettings {
     pub endpoint: String,
 }
 // Provider routing and preflight reservations must use the same price ceilings.
-pub const INPUT_USD_PER_MILLION: f64 = 3.0;
-pub const OUTPUT_USD_PER_MILLION: f64 = 15.0;
+pub const INPUT_USD_PER_MILLION: f64 = 4.0;
+pub const OUTPUT_USD_PER_MILLION: f64 = 20.0;
 
 impl ActorSettings {
     pub fn validate(&self) -> Result<()> {
@@ -248,7 +248,7 @@ impl ActorSettings {
         let endpoint = compatible.into_iter().find(|e| {
                 e["pricing"]["prompt"].as_str().and_then(|p|p.parse::<f64>().ok()).is_some_and(|p|p <= INPUT_USD_PER_MILLION / 1_000_000.0)
                 && e["pricing"]["completion"].as_str().and_then(|p|p.parse::<f64>().ok()).is_some_and(|p|p <= OUTPUT_USD_PER_MILLION / 1_000_000.0)
-        }).ok_or_else(||anyhow::anyhow!("Settings are supported, but no compatible endpoint has a verified price within the model cap ($3 input / $15 output per million tokens). Changing reasoning effort will not bypass this cap. Choose a cheaper model."))?;
+        }).ok_or_else(||anyhow::anyhow!("Settings are supported, but no compatible endpoint has a verified price within the model cap ($4 input / $20 output per million tokens). Changing reasoning effort will not bypass this cap. Choose a cheaper model."))?;
         self.endpoint = endpoint["tag"].as_str().unwrap().into();
         Ok(())
     }
