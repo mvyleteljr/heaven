@@ -145,22 +145,22 @@ requiring every department and capability to be implemented in advance.
 ## Watching the open-discovery experiment
 
 `examples/jit/open-discovery-watch.json` is the next condition: live GPT-4.1
-actor and generator, rolling memory, up to 100 actions / 160 total calls / eight
+actor and GPT-5.4 Mini generator (high reasoning), rolling memory, up to 100 actions / 160 total calls / eight
 construction attempts, two validation repairs per attempt, and a separately
 user-authorized **$5 total for this experiment**. The current condition has a
-$4.90 cap after the first attempt used $0.08866. It asks the actor to choose three capabilities,
+$4.40 cap after the first two attempts used $0.54453 combined. It asks the actor to choose three capabilities,
 compare operations before/after local policy changes, seek counterexamples,
 revisit prior state and write `/workspace/transformation-report.md`. Neither
 capability names nor business outcome are prescribed. Completion and business
 improvement are not assumed.
 
-The active October 14 condition is `594cfad9-c9b8-4d29-89b9-2387684c8af3` in the normal
-Compose database. [Watch locally](http://127.0.0.1:3000/?run=594cfad9-c9b8-4d29-89b9-2387684c8af3).
+The active October 14 condition is `ea35c324-a67c-4943-abb5-3d9b687fad80` in the normal
+Compose database. [Watch locally](http://127.0.0.1:3000/?run=ea35c324-a67c-4943-abb5-3d9b687fad80).
 The viewer now shows generated capabilities, facts, executable operations,
 source, institutional changes, call counts and charged + reserved spending.
 It polls automatically. Pause finishes the in-flight action; the scrubber
 inspects history, and Latest resumes following the trace. The initial run
-manifest is `data/audits/open-discovery-b-watch.json`; consult the live
+manifest is `data/audits/open-discovery-c-watch.json`; consult the live
 audit endpoint for current status. This section records launch, not a passing
 result. Do not restart the server or change its experiment configuration while
 it runs. The run ends on completion, a configured limit or a fatal error.
@@ -168,14 +168,18 @@ it runs. The run ends on completion, a configured limit or a fatal error.
 For another checkout, create a fresh run by POSTing the example JSON to
 `/api/institutions` with `Content-Type: application/json` and
 `X-Frontier-Client: research-ui`, then open `/?run=RETURNED_ID` and click Run.
-Agree on the budget first; the saved example allows paid inference up to $4.90.
+Agree on the budget first; the saved example allows paid inference up to $4.40.
 
 The first condition (`969763d0-436d-49cf-953b-935fea2dcf86`) is preserved paused:
 4 actor calls and 9 generator calls, three rejected constructions, no modules.
 It exposed unsupported enum blocks, arithmetic inside writes, and invalid seed
-references. The second condition supplies the maintained grammar pinned to the
-Onto build (`src/onto_grammar.md`) plus explicit adapter restrictions. Do not
-resume the first condition alongside the second against the same $5 allowance.
+references. The second condition (`594cfad9-c9b8-4d29-89b9-2387684c8af3`) supplied the
+maintained grammar pinned to the Onto build (`src/onto_grammar.md`), but still
+failed eight constructions. It is preserved paused at $0.45587, with no modules.
+The third condition keeps that grammar and the same task, changing the generator
+to GPT-5.4 Mini with high reasoning. Do not resume earlier conditions alongside
+it against the same $5 allowance. See `examples/jit/open-discovery-status.json`
+for launch and stopped-condition evidence; query the API for current status.
 
 ## Run locally
 

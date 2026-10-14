@@ -1,0 +1,156 @@
+{
+  "scope": "Live open discovery; stopped conditions and launch record, not a success claim.",
+  "authorized_experiment_total_usd": 5,
+  "stopped_conditions": [
+    {
+      "condition": "A",
+      "run_id": "969763d0-436d-49cf-953b-935fea2dcf86",
+      "status": "paused",
+      "spending": {
+        "calls_including_inherited": 13,
+        "calls_recorded_on_this_branch": {
+          "actor": 4,
+          "world": 9
+        },
+        "charged_usd": 0.08866000000000002,
+        "limit_usd": 5.0,
+        "uncertain_reserved_usd": 0.0
+      },
+      "construction": {
+        "attempts_including_inherited": 3,
+        "published_on_this_branch": 0,
+        "rejected_on_this_branch": 3,
+        "timings": []
+      },
+      "integrity": {
+        "attempted_actions": 4,
+        "completed_observations": 4,
+        "events_contiguous": true,
+        "last_event_matches_run": true,
+        "memory_prefix_valid": true,
+        "unresolved_action_attempts": 0
+      },
+      "failures": [
+        {
+          "kind": "construction_rejected",
+          "message": "Onto refused: \"generated.onto:46: cannot read the value \\\"(count RepairAttempt where RepairAttempt.device is Device) + 1\\\" \u2014 quote strings, or name a declared entity\"",
+          "phase": null,
+          "role": null,
+          "seq": 23
+        },
+        {
+          "kind": "construction_rejected",
+          "message": "Onto refused: \"generated.onto:23: cannot read the value \\\"DeviceStatus:value \\\"Pending\\\"\\\" \u2014 quote strings, or name a declared entity\"",
+          "phase": null,
+          "role": null,
+          "seq": 40
+        },
+        {
+          "kind": "construction_rejected",
+          "message": "Onto refused: \"generated.onto:9: expected a field (`name: type`), or an annotation (`@description` \u00b7 `@type` \u00b7 `@rule` \u00b7 `@where` \u00b7 `@boundary external`)\"",
+          "phase": null,
+          "role": null,
+          "seq": 58
+        }
+      ]
+    },
+    {
+      "condition": "B",
+      "run_id": "594cfad9-c9b8-4d29-89b9-2387684c8af3",
+      "status": "paused",
+      "spending": {
+        "calls_including_inherited": 33,
+        "calls_recorded_on_this_branch": {
+          "actor": 9,
+          "world": 24
+        },
+        "charged_usd": 0.45587,
+        "limit_usd": 4.9,
+        "uncertain_reserved_usd": 0.0
+      },
+      "construction": {
+        "attempts_including_inherited": 8,
+        "published_on_this_branch": 0,
+        "rejected_on_this_branch": 8,
+        "timings": []
+      },
+      "integrity": {
+        "attempted_actions": 9,
+        "completed_observations": 9,
+        "events_contiguous": true,
+        "last_event_matches_run": true,
+        "memory_prefix_valid": true,
+        "unresolved_action_attempts": 0
+      },
+      "failures": [
+        {
+          "kind": "construction_rejected",
+          "message": "Onto refused: \"generated.onto:35: cannot read the value \\\"now\\\" \u2014 quote strings, or name a declared entity\"",
+          "phase": null,
+          "role": null,
+          "seq": 23
+        },
+        {
+          "kind": "construction_rejected",
+          "message": "Onto refused: \"generated.onto:38: Remove the extra word \u201c\\\"diagnosis\\\"\u201d: write \u201cOperator sets Device.status to\u201d.\"",
+          "phase": null,
+          "role": null,
+          "seq": 40
+        },
+        {
+          "kind": "construction_rejected",
+          "message": "Onto refused: \"generated.onto:44: a write is `sets <Name>.<field> to <value>`\"",
+          "phase": null,
+          "role": null,
+          "seq": 57
+        },
+        {
+          "kind": "construction_rejected",
+          "message": "Onto refused: \"generated.onto:36: cannot read the value \\\"now\\\" \u2014 quote strings, or name a declared entity\"",
+          "phase": null,
+          "role": null,
+          "seq": 74
+        },
+        {
+          "kind": "construction_rejected",
+          "message": "Onto refused: \"generated.onto:31: a write is `sets <Name>.<field> to <value>`\"",
+          "phase": null,
+          "role": null,
+          "seq": 91
+        },
+        {
+          "kind": "construction_rejected",
+          "message": "Onto refused: \"generated.onto:4: cannot read \\\"repair\\\"\\\" after the enum value \\\"\\\"in\\\" \u2014 only `@final` trails a value\"",
+          "phase": null,
+          "role": null,
+          "seq": 108
+        },
+        {
+          "kind": "construction_rejected",
+          "message": "Onto refused: \"generated.onto:37: cannot read the value \\\"now\\\" \u2014 quote strings, or name a declared entity\"",
+          "phase": null,
+          "role": null,
+          "seq": 125
+        },
+        {
+          "kind": "construction_rejected",
+          "message": "Onto refused: \"generated.onto:19: \u201c@rule\u201d isn\u2019t a block type. Use project, actor, object, story, or seed.\"",
+          "phase": null,
+          "role": null,
+          "seq": 143
+        }
+      ]
+    }
+  ],
+  "active_launch": {
+    "run_id": "ea35c324-a67c-4943-abb5-3d9b687fad80",
+    "url": "http://127.0.0.1:3000/?run=ea35c324-a67c-4943-abb5-3d9b687fad80",
+    "started_at": "2026-10-14T16:44:53.816106+00:00",
+    "source_sha256": "72916051eb36defee870573b873922cf0beba65188124a3b0ef2cfceb70e4d8f",
+    "authorized_total_usd": 5,
+    "previous_attempts_accounted_usd": 0.54453,
+    "run_cap_usd": 4.4,
+    "condition": "GPT-4.1 actor; GPT-5.4 Mini generator with high reasoning; same pinned grammar and task",
+    "status": "running"
+  }
+}

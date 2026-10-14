@@ -1,10 +1,10 @@
 {
-  "name": "Open discovery \u00b7 device repair \u00b7 grammar reference",
+  "name": "Open discovery \u00b7 device repair \u00b7 reasoning generator",
   "config": {
     "demo": false,
     "structured_actions": true,
     "actor_model": "openai/gpt-4.1",
-    "world_model": "openai/gpt-4.1",
+    "world_model": "openai/gpt-5.4-mini",
     "provider": "openai",
     "actor_settings": {
       "provider": "openrouter",
@@ -14,14 +14,14 @@
     },
     "generator_settings": {
       "provider": "openrouter",
-      "temperature": 0.3,
+      "temperature": null,
       "max_tokens": 8192,
-      "reasoning_effort": null
+      "reasoning_effort": "high"
     },
     "action_limit": 100,
     "expansion_limit": 8,
     "call_limit": 160,
-    "dollar_limit": 4.9,
+    "dollar_limit": 4.4,
     "context_limit_bytes": 256000,
     "memory": {
       "recent_entries": 12,
