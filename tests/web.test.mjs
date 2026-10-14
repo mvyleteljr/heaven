@@ -38,7 +38,7 @@ function deferred() {
 
 // Minimal DOM adapter: exercise the actual application startup, event handlers,
 // and asynchronous polling without adding a browser dependency to the harness.
-async function browser(initial = "") {
+async function browser(initial = "", search = "") {
   class Option {
     constructor(text, value = text) { this.text = text; this.value = value; }
   }
@@ -59,13 +59,15 @@ async function browser(initial = "") {
   element("#context-limit").value = 256000;
   element("#max-tokens").value = element("#generator-max-tokens").value = 1024;
   let stored = initial;
-  let responder = (path) => path === "runs" ? (stored ? [{id:stored, flowers:true}] : [])
+  const linked = new URLSearchParams(search).get("run");
+  let url = new URL("http://localhost:3000/" + search);
+  let responder = (path) => path === "runs" ? [...new Set([stored, linked].filter(Boolean))].map((id) => ({id, flowers:true}))
     : path.startsWith("runs/") ? detail(path.slice(5).split("?")[0])
     : path === "models" ? [] : path === "health" ? {key_available:false} : seed;
   const requests = [];
   let tick;
   const api = await new (Object.getPrototypeOf(async function() {}).constructor)(
-    "document", "localStorage", "fetch", "Option", "setInterval",
+    "document", "localStorage", "fetch", "Option", "setInterval", "globalThis",
     source + "\nreturn {refresh, act, state:()=>({id,data}), select:async(value)=>{$('#runs').value=value; await $('#runs').onchange();}};",
   )(
     { querySelector: element, querySelectorAll: () => [] },
@@ -76,8 +78,9 @@ async function browser(initial = "") {
       const value = await responder(path, options);
       return {ok:true, json:async()=>value};
     }, Option, (callback) => {tick=callback;},
+    {get location() {return url;}, history: {replaceState: (_, __, next) => {url = new URL(next);}}},
   );
-  return { ...api, element, requests, tick:()=>tick(), respond: (fn) => {responder=fn;}, stored:()=>stored,
+  return { ...api, element, requests, tick:()=>tick(), respond: (fn) => {responder=fn;}, stored:()=>stored, url:()=>url,
     experiment: async (value) => { element("#experiment").value = value; await element("#experiment").onchange(); },
   };
 }
@@ -179,6 +182,8 @@ test("Accounts loads editable Ontolang with escaped grouped facts and Stories", 
   assert.match(b.element("#world").innerHTML, /Clerk creates Transfer &lt;safe&gt;/);
   assert.doesNotMatch(b.element("#world").innerHTML, /<img|<safe>/);
   assert.match(b.element("#settings-status").textContent, /\$0.25 · 30 actions/);
+  assert.doesNotMatch(b.element("#world").innerHTML, /Company foundation|shared commitments are read-only/);
+  assert.equal(b.element("#institution-generation").hidden, true);
   assert.deepEqual(JSON.parse(b.element("#state").textContent).ontology, ontology);
 });
 
@@ -335,4 +340,92 @@ test("a failed seed switch restores the experiment and preserves its edited draf
   assert.equal(request.institution.actor, "Clerk:Edited");
   assert.equal(request.institution.source["accounts.onto"], "project MyEditedAccounts\n");
   assert.equal(request.institution.source["notes.onto"], institution.source["notes.onto"]);
+});
+
+test("institution viewer exposes generated state, changes and live spending", async () => {
+  const b = await browser();
+  const next = detail("first", 2);
+  next.run.experiment = "institutions";
+  next.run.calls = 3; next.run.charged = 0.02; next.run.reserved = 0.1;
+  next.run.config = {...config, dollar_limit: 5};
+  next.frames[0].world = {...seed.world, ontology: {snapshot:{instances:[]}, modules:{claims:{
+    snapshot:{instances:[{id:"Policy:main",type:"Policy",limit:10}]},
+    receipts:{one:{result:{committed:true}}}, stories:["Operator expands Policy"],
+    definition:{source:{"generated.onto":"<unsafe>"}},
+  }}}};
+  next.run.world = next.frames[0].world;
+  b.respond((path) => path === "runs" ? [{id:"first",experiment:"institutions"}] : next);
+  await b.select("first");
+  assert.match(b.element("#world").innerHTML, /claims/);
+  assert.match(b.element("#world").innerHTML, /Policy:main/);
+  assert.match(b.element("#world").innerHTML, /1 accepted/);
+  assert.match(b.element("#world").innerHTML, /&lt;unsafe&gt;/);
+  assert.match(b.element("#state").textContent, /ontology/);
+  assert.match(b.element("#live-progress").textContent, /\$0.120.*\$5/);
+  assert.equal(b.element("#experiment").value, "institutions_generated");
+});
+
+test("generated capabilities have a separate editable foundation and save bounded generation settings", async () => {
+  const b = await browser();
+  const generation = {brief: "Repair company", max_modules: 128, repair_attempts: 0};
+  const generatedSeed = {
+    ...institutionSeed,
+    world: {...seed.world, ontology: {...ontology, generation, stories: [], modules: {}}},
+    generation,
+    config: {...config, demo: false, actor_settings: {max_tokens: 4096}, generator_settings: {max_tokens: 4096}},
+  };
+  b.respond((path) => path === "runs" ? [] : path === "institutions" ? {id: "generated"} : generatedSeed);
+  await b.experiment("institutions_generated");
+  assert.ok(b.requests.some((r) => r.path === "institution-seed?template=generative"));
+  assert.equal(b.element("#institution-generation").hidden, false);
+  assert.equal(b.element("#institution-source").readOnly, false);
+  assert.equal(b.element("#generation-brief").value, generation.brief);
+  assert.equal(b.element("#generator-max-tokens").value, 4096);
+  assert.match(b.element("#world").innerHTML, /Company foundation/);
+  assert.match(b.element("#settings-status").textContent, /\$0.50 · 60 actions · 6 expansions/);
+  b.element("#generation-brief").value = "Revised repair company";
+  b.element("#generation-brief").oninput();
+  b.element("#generation-repairs").value = 1;
+  b.element("#generation-repairs").oninput();
+  b.element("#institution-source").value = "project NewFoundation\n";
+  b.element("#institution-source").oninput();
+  await b.element("#new").onclick();
+  const request = JSON.parse(b.requests.find((r) => r.path === "institutions").options.body);
+  assert.equal(request.template, "generative");
+  assert.deepEqual(request.generation, {...generation, brief: "Revised repair company", repair_attempts: 1});
+  assert.equal(request.institution.source["accounts.onto"], "project NewFoundation\n");
+  assert.equal(request.config.action_limit, 60);
+  assert.equal(request.config.expansion_limit, 6);
+  assert.equal(request.config.call_limit, 90);
+  assert.equal(request.config.dollar_limit, 0.5);
+  assert.equal(request.config.demo, false);
+});
+
+test("saved generated runs expose fixed generation settings and restore the correct new template", async () => {
+  const b = await browser();
+  const generation = {brief: "Saved company", max_modules: 12, repair_attempts: 2};
+  const saved = detail("generated-saved");
+  saved.run.experiment = "institutions";
+  saved.run.world = saved.frames[0].world = {...seed.world, ontology: {...ontology, generation, stories: []}};
+  b.respond((path) => path === "runs" ? [{id: saved.run.id, experiment: "institutions"}] : saved);
+  await b.select(saved.run.id);
+  assert.equal(b.element("#experiment").value, "institutions_generated");
+  assert.equal(b.element("#generation-brief").value, "Saved company");
+  assert.equal(b.element("#generation-brief").disabled, true);
+  assert.equal(b.element("#generation-repairs").value, 2);
+  assert.match(b.element("#director-policy").textContent, /generate executable capabilities/);
+  b.respond((path) => path === "runs" ? [] : {...institutionSeed, generation});
+  await b.select("");
+  assert.ok(b.requests.some((r) => r.path === "institution-seed?template=generative"));
+  assert.equal(b.element("#generation-brief").disabled, false);
+});
+
+test("deep links take precedence and follow run selection without stale reload targets", async () => {
+  const b = await browser("stored", "?run=linked");
+  assert.equal(b.state().id, "linked");
+  b.respond((path) => path === "runs" ? [{id: "second", flowers: true}] : path.startsWith("runs/") ? detail("second") : seed);
+  await b.select("second");
+  assert.equal(b.url().searchParams.get("run"), "second");
+  await b.select("");
+  assert.equal(b.url().searchParams.has("run"), false);
 });

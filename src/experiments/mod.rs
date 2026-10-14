@@ -82,7 +82,8 @@ pub fn resolve(run: &Run, action: &Action) -> Result<Resolution> {
         Some(Experiment::Records) => records::directive(target),
         Some(Experiment::Bellwether) => bellwether::directive(target),
         Some(Experiment::Recall) => None,
-        Some(Experiment::Institutions | Experiment::HarborOnto) => None,
+        Some(Experiment::Institutions) => crate::institutions::directive(run, target),
+        Some(Experiment::HarborOnto) => None,
         None => None,
     };
     Ok(match directive {
@@ -106,8 +107,13 @@ pub fn resolve(run: &Run, action: &Action) -> Result<Resolution> {
     })
 }
 pub fn exists(world: &World, target: &str) -> bool {
-    if world.ontology.is_some() && crate::ontology::route(target).is_some() {
-        return true;
+    if let Some(state) = &world.ontology
+        && let Some(path) = crate::ontology::route(target)
+    {
+        // Authored worlds own their complete HTTP surface, including corrective
+        // route errors and Harbor's trusted adapters. Only generative worlds
+        // treat an unknown module boundary as a construction opportunity.
+        return state.generation.is_none() || crate::institutions::exists(state, &path);
     }
     if world.business.is_some() && bellwether::route(target).is_some_and(|p| !p.ends_with("/about"))
     {
@@ -145,13 +151,15 @@ pub fn context(run: &Run, target: &str) -> Result<Value> {
             }
             Ok(json!(committed))
         }
-        None | Some(Experiment::Recall | Experiment::Institutions | Experiment::HarborOnto) => {
+        Some(Experiment::Institutions) => crate::institutions::context(run),
+        None | Some(Experiment::Recall | Experiment::HarborOnto) => {
             anyhow::bail!("No experiment construction policy")
         }
     }
 }
 pub fn publish(world: &mut World, request: &Request, resource: &Resource) -> Result<()> {
     match resource.functionality.as_str() {
+        "onto.module.v1" => crate::institutions::publish(world, request, resource),
         "engine.bellwether-page.v1" => bellwether::publish(world, resource),
         "engine.static-http.v1" => {
             ensure!(

@@ -1,0 +1,21 @@
+# Deterministic test fixture only. Live generation does not receive this file.
+object Policy
+  name: string @required
+  limit: int @required
+  @rule Policy.limit is at least 0
+  @rule Policy.limit is at most 100
+
+object WorkItem
+  amount: int @required
+  policy: Policy @required
+  @rule WorkItem.amount is more than 0
+  @rule WorkItem.amount is at most WorkItem.policy.limit
+
+story Operations
+  Operator creates WorkItem for Policy
+    sets WorkItem.policy to Policy
+  Operator expands Policy
+    sets Policy.limit to 50
+
+seed Policy
+  name: "main", limit: 10

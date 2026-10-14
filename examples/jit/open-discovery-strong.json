@@ -1,0 +1,45 @@
+{
+  "name": "Open discovery \u00b7 GPT-6.1 Sol + Opus 5.5",
+  "config": {
+    "demo": false,
+    "structured_actions": true,
+    "actor_model": "openai/gpt-6.1-sol",
+    "world_model": "anthropic/claude-opus-5.5",
+    "provider": "openai",
+    "actor_settings": {
+      "provider": "openrouter",
+      "temperature": null,
+      "max_tokens": 32768,
+      "reasoning_effort": "high"
+    },
+    "generator_settings": {
+      "provider": "openrouter",
+      "temperature": null,
+      "max_tokens": 32768,
+      "reasoning_effort": "high"
+    },
+    "action_limit": 100,
+    "expansion_limit": 8,
+    "call_limit": 160,
+    "dollar_limit": 9.19,
+    "context_limit_bytes": 256000,
+    "memory": {
+      "recent_entries": 12,
+      "max_summary_bytes": 8000
+    },
+    "actor_user_prompt": "You are an internal transformation investigator at a fictional device-repair company. Your objective is to discover how it operates and test an AI-native reorganization through actual institutional operations. Start at https://institutions.local/. Choose and explore three capabilities that would let you investigate useful operational changes, requesting https://institutions.local/modules/NAME with short lowercase hyphenated names. Read each generated model and its facts before using its exact Story interfaces. The institution root documents command payloads. Investigate the baseline, make an authorized local policy change, then repeat a comparable operation to measure the downstream difference. Seek a counterexample or boundary case against the new policy, and verify a previous capability is preserved after discovering another. Do not force every capability to show improvement; report failures and unchanged outcomes. Record evidence, exact command IDs and before/after observations in workspace notes. Produce a final report in /workspace/transformation-report.md and finish when the investigation is complete. Capabilities are generated only when first requested; operations must use the published model. Shared foundation commitments cannot be changed; modules have isolated mutable state. Do not claim cross-module, real-world, financial or productivity effects you did not observe. All activity is simulated."
+  },
+  "institution": {
+    "source": {
+      "foundation.onto": "project OpenInstitution\n  @description \"A small immutable foundation for on-demand executable capabilities.\"\n\nactor Operator\n  @type organization\n  @affiliation internal\n  @access authenticated\n\nobject Company\n  name: string @required\n  ceiling: int @required\n  @rule Company.ceiling is at least 0\n\nseed Operator\n  name: \"Ada\"\n\nseed Company\n  name: \"Core\", ceiling: 100\n"
+    },
+    "actor": "Operator:Ada",
+    "epoch": "2026-01-01T00:00:00Z",
+    "public_facts": true
+  },
+  "generation": {
+    "brief": "A fictional company coordinates device repair. Its capabilities are not enumerated in advance. Materialize the requested capability with a small coherent set of objects, initial facts, enforceable operating constraints and executable single-actor Stories. Use the existing Operator actor. Include meaningful operational state and, where appropriate, authorized changes to local policy that affect subsequent decisions. Preserve the immutable company foundation. Do not invent effects in other modules or the external world. Keep the capability comprehensible and executable; do not optimize for the investigator's success. This is synthetic world building: missing local specifications are intentional. You are authorized and expected to invent plausible local operating policies, workflow stages, thresholds and initial records for the capability named in the request. Do not ask for more requirements or decline merely because details were not supplied. Choose a small coherent implementation with 2-4 local object types and a few executable operations, including a locally authorized policy revision when meaningful. These are new fictional facts, not claims about a real company. Preserve all supplied foundation facts and rules; never invent past actor actions or override host restrictions.",
+    "max_modules": 128,
+    "repair_attempts": 2
+  }
+}

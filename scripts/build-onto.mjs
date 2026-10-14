@@ -1,6 +1,7 @@
 // Build the optional bridge from the inspected PR revision. No package install
 // or sibling checkout mutation. Pass an extracted pinned archive or checkout.
-import {readFileSync, writeFileSync, mkdirSync, existsSync} from 'node:fs';
+import {readFileSync, existsSync} from 'node:fs';
+import {installRuntime} from './onto-runtime-files.mjs';
 import {resolve, dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createRequire} from 'node:module';
@@ -15,7 +16,6 @@ if (actual!==revision) throw new Error(`Expected Onto ${revision}, got ${actual}
 const toolchain=resolve(process.env.ONTO_TOOLCHAIN_ROOT ?? resolve(root,'../onto'));
 const require=createRequire(resolve(toolchain,'package.json'));
 const output=resolve(root,'data/onto-runtime.cjs');
-mkdirSync(dirname(output),{recursive:true});
 const packages=['ontolang','ontolang-runtime'];
 const alias={};
 for (const name of packages) {
@@ -26,7 +26,8 @@ for (const name of packages) {
     if (file) alias[`@trigramco/${name}${key==='.'?'':key.slice(1)}`]=resolve(dir,file.replace('./dist/','./src/').replace(/\.js$/,'.ts'));
   }
 }
-require('esbuild').buildSync({entryPoints:[resolve(root,'src/onto_host.mjs')],bundle:true,platform:'node',format:'cjs',target:'node24',alias,nodePaths:[resolve(toolchain,'node_modules'),resolve(toolchain,'packages/ontolang/node_modules')],outfile:output,logLevel:'warning'});
-const manifest={onto_revision:revision,bridge_sha256:createHash('sha256').update(readFileSync(output)).digest('hex'),node:process.versions.node,esbuild:require('esbuild').version,toolchain_lock_sha256:createHash('sha256').update(readFileSync(resolve(toolchain,'pnpm-lock.yaml'))).digest('hex')};
-writeFileSync(resolve(root,'data/onto-runtime.json'),JSON.stringify(manifest,null,2)+'\n');
+const built=require('esbuild').buildSync({entryPoints:[resolve(root,'src/onto_host.mjs')],bundle:true,platform:'node',format:'cjs',target:'node24',alias,nodePaths:[resolve(toolchain,'node_modules'),resolve(toolchain,'packages/ontolang/node_modules')],outfile:output,write:false,logLevel:'warning'});
+const bytes=built.outputFiles[0].contents;
+const manifest={onto_revision:revision,bridge_sha256:createHash('sha256').update(bytes).digest('hex'),node:process.versions.node,esbuild:require('esbuild').version,toolchain_lock_sha256:createHash('sha256').update(readFileSync(resolve(toolchain,'pnpm-lock.yaml'))).digest('hex')};
+installRuntime(output,bytes,manifest);
 console.log(JSON.stringify(manifest));

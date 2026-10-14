@@ -5,8 +5,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fs,
+    path::Path,
     process::Command,
     time::{Duration, Instant},
 };
@@ -36,6 +37,14 @@ pub struct State {
     pub snapshot: Value,
     pub stories: Value,
     pub receipts: BTreeMap<String, Receipt>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub generation: Option<crate::institutions::Policy>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub modules: BTreeMap<String, State>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub protected: Vec<Value>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub protected_types: Vec<String>,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -48,22 +57,53 @@ struct Input {
     fields: Option<BTreeMap<String, Value>>,
 }
 
-fn runtime() -> Result<(Vec<u8>, String)> {
+fn runtime(expected: Option<&str>) -> Result<(Vec<u8>, String)> {
     let path = std::env::var("FRONTIER_ONTO_RUNTIME")
         .map_err(|_| anyhow::anyhow!("Optional Onto runtime is not configured"))?;
-    let bytes = fs::read(&path).map_err(|e| {
+    runtime_at(Path::new(&path), expected)
+}
+
+fn runtime_at(path: &Path, expected: Option<&str>) -> Result<(Vec<u8>, String)> {
+    // The configured default selects new runs. A saved run may use only its
+    // exact content-addressed bundle, never a newer interpreter by accident.
+    if let Some(expected) = expected {
+        ensure!(
+            expected.len() == 64 && expected.bytes().all(|b| b.is_ascii_hexdigit()),
+            "Invalid saved Onto runtime hash"
+        );
+        if let Ok(bytes) = fs::read(path) {
+            let digest = format!("{:x}", Sha256::digest(&bytes));
+            if digest == expected {
+                return Ok((bytes, digest));
+            }
+        }
+        let archive = path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join("onto-runtimes")
+            .join(format!("{expected}.cjs"));
+        let bytes = fs::read(&archive).map_err(|e| {
+            anyhow::anyhow!(
+                "Saved Onto runtime {expected} is unavailable at {}: {e}; restore the original bundle",
+                archive.display()
+            )
+        })?;
+        let digest = format!("{:x}", Sha256::digest(&bytes));
+        ensure!(
+            digest == expected,
+            "Archived Onto runtime hash mismatch; saved runs require their exact runtime bundle"
+        );
+        return Ok((bytes, digest));
+    }
+    let bytes = fs::read(path).map_err(|e| {
         anyhow::anyhow!("Optional Onto runtime unavailable: {e}; run scripts/build-onto.mjs")
     })?;
     let digest = format!("{:x}", Sha256::digest(&bytes));
     Ok((bytes, digest))
 }
 
-fn bridge(input: Value, expected: &str) -> Result<Value> {
-    let (bundle, digest) = runtime()?;
-    ensure!(
-        digest == expected,
-        "Onto runtime changed; saved runs require their exact runtime bundle"
-    );
+pub(crate) fn bridge(input: Value, expected: &str) -> Result<Value> {
+    let (bundle, _) = runtime(Some(expected))?;
     let request = serde_json::to_vec(&input)?;
     ensure!(request.len() <= 524_288, "Onto request exceeds 512 KiB");
     let dir = tempfile::tempdir()?;
@@ -111,14 +151,14 @@ fn bridge(input: Value, expected: &str) -> Result<Value> {
 }
 
 impl State {
-    fn command_guide(&self) -> Value {
+    fn command_guide(&self, base: &str) -> Value {
         let mut guide = json!({
-            "endpoint":"https://institutions.local/commands",
+            "endpoint":format!("{base}/commands"),
             "method":"POST",
             "instructions":[
                 "Use the absolute endpoint above. There is no /api prefix.",
-                "Copy a story string from GET https://institutions.local/model verbatim. Keep tokens such as Account:sender in the Story sentence; do not replace them with account names or append amounts.",
-                "Bind each participant token to an instance ID from GET https://institutions.local/facts in participants. Put creation values such as amount and reference in fields.",
+                format!("Copy a story string from GET {base}/model verbatim. Keep tokens such as Account:sender in the Story sentence; do not replace them with account names or append amounts."),
+                format!("Bind each participant token to an instance ID from GET {base}/facts in participants. Put creation values such as amount and reference in fields."),
                 "Send the command as a JSON-encoded string in http.request inputs.body, with method POST and the absolute url. command_id is a required unique key. Reuse it only for an identical retry; a retry must not create a second effect.",
                 "A 400 response means the request was invalid. Correct the route or payload using the error before trying again. A successful HTTP response alone does not establish success: inspect committed and violations, then verify the facts."
             ]
@@ -151,17 +191,21 @@ impl State {
             );
             guide["example_action"] = json!({
                 "kind":"http.request",
-                "inputs":{"method":"POST","url":"https://institutions.local/commands","headers":{"content-type":"application/json"},"body":command.to_string()}
+                "inputs":{"method":"POST","url":format!("{base}/commands"),"headers":{"content-type":"application/json"},"body":command.to_string()}
             });
         }
         guide
     }
 
     pub fn check_runtime(&self) -> Result<()> {
-        ensure!(
-            runtime()?.1 == self.runtime_sha256,
-            "Onto runtime changed; saved runs require their exact runtime bundle"
-        );
+        let mut checked = BTreeSet::new();
+        let mut pending = vec![self];
+        while let Some(state) = pending.pop() {
+            if checked.insert(&state.runtime_sha256) {
+                runtime(Some(&state.runtime_sha256))?;
+            }
+            pending.extend(state.modules.values());
+        }
         Ok(())
     }
     pub fn initialize(definition: Definition) -> Result<Self> {
@@ -185,7 +229,7 @@ impl State {
             definition.actor.len() <= 200 && definition.epoch.len() <= 40,
             "Invalid Onto identity/epoch"
         );
-        let (_, runtime_sha256) = runtime()?;
+        let (_, runtime_sha256) = runtime(None)?;
         let response = bridge(
             json!({"operation":"initialize","source":definition.source,"actor":definition.actor,"epoch":definition.epoch,"elapsed_seconds":0}),
             &runtime_sha256,
@@ -198,6 +242,10 @@ impl State {
             snapshot: response["snapshot"].clone(),
             stories: response["stories"].clone(),
             receipts: BTreeMap::new(),
+            generation: None,
+            modules: BTreeMap::new(),
+            protected: vec![],
+            protected_types: vec![],
         })
     }
     pub fn request(
@@ -207,30 +255,83 @@ impl State {
         body: Option<&str>,
         elapsed: u64,
     ) -> Result<Value> {
+        self.request_at(method, path, body, elapsed, ROOT.trim_end_matches('/'))
+    }
+
+    fn request_at(
+        &mut self,
+        method: &str,
+        path: &str,
+        body: Option<&str>,
+        elapsed: u64,
+        base: &str,
+    ) -> Result<Value> {
+        if let Some(rest) = path.strip_prefix("/modules/") {
+            let key = rest.split('/').next().unwrap_or_default();
+            if let Some(module) = self.modules.get_mut(key) {
+                // Keep an invalid suffix too so errors point back to this
+                // module's endpoints, rather than the read-only foundation.
+                let suffix = &rest[key.len()..];
+                let route = if suffix.is_empty() { "/" } else { suffix };
+                return module.request_at(
+                    method,
+                    route,
+                    body,
+                    elapsed,
+                    &format!("{base}/modules/{key}"),
+                );
+            }
+            if crate::institutions::module_path(path).is_some() {
+                anyhow::bail!(
+                    "Capability unavailable at this route; open {base}/modules/NAME first"
+                );
+            }
+        }
         if method == "GET" && path == "/" {
-            return Ok(
-                json!({"actor":self.definition.actor,"visibility":"All institution facts are public in this experiment.","urls":{"api":ROOT,"model":"https://institutions.local/model","facts":"https://institutions.local/facts","commands":"https://institutions.local/commands"},"routes":{"GET /model":"Canonical Onto source and available single actor Stories","GET /facts":"Current facts and derived values","POST /commands":{"command_id":"Required stable unique key; reuse only for an identical retry","story":"Required exact Story sentence copied verbatim from /model","object":"Optional instance ID","participants":"Token to instance ID map; required when the Story has participants","about":"Optional context ID","fields":"Creation fields from the model; money is integer minor units"}},"command_guide":self.command_guide(),"authority":"Actor identity, source, clock, minting and system execution are host-owned."}),
-            );
+            let mut document = json!({
+                "actor":self.definition.actor,
+                "visibility":"All institution facts are public in this experiment.",
+                "urls":{"api":if base == ROOT.trim_end_matches('/') { ROOT } else { base },"model":format!("{base}/model"),"facts":format!("{base}/facts")},
+                "routes":{"GET /model":"Canonical Onto source and available single actor Stories","GET /facts":"Current facts and derived values"},
+                "authority":"Actor identity, source, foundation, clock, minting and system execution are host-owned."
+            });
+            if self.generation.is_some() {
+                document["module_discovery"] = json!(format!(
+                    "Browse a business capability at GET {base}/modules/NAME. NAME is 1-48 lowercase ASCII letters, digits or hyphens. Open the capability before using its /model, /facts and /commands routes. Modules share a read-only company foundation; operational state is local to each module."
+                ));
+            } else {
+                document["urls"]["commands"] = json!(format!("{base}/commands"));
+                document["routes"]["POST /commands"] = json!({"command_id":"Required stable unique key; reuse only for an identical retry","story":"Required exact Story sentence copied verbatim from /model","object":"Optional instance ID","participants":"Token to instance ID map; required when the Story has participants","about":"Optional context ID","fields":"Creation fields from the model; money is integer minor units"});
+                document["command_guide"] = self.command_guide(base);
+            }
+            return Ok(document);
         }
         if method == "GET" && path == "/model" {
-            return Ok(
-                json!({"source":self.definition.source,"stories":self.stories,"command_guide":self.command_guide()}),
-            );
+            let mut document = json!({"source":self.definition.source,"stories":self.stories});
+            if self.generation.is_none() {
+                document["command_guide"] = self.command_guide(base);
+            }
+            return Ok(document);
         }
         if method == "GET" && path == "/facts" {
             let response = bridge(
                 json!({"operation":"inspect","source":self.definition.source,"actor":self.definition.actor,"epoch":self.definition.epoch,"elapsed_seconds":elapsed,"snapshot":self.snapshot}),
                 &self.runtime_sha256,
             )?;
+            self.check_protected(&response["snapshot"])?;
             self.snapshot = response["snapshot"].clone();
             return Ok(json!({"snapshot":self.snapshot,"standing":response["standing"]}));
         }
         ensure!(
             method == "POST" && path == "/commands",
-            "Unknown institution route: {method} {path}. Use GET https://institutions.local/ for documentation, GET https://institutions.local/model, GET https://institutions.local/facts, or POST https://institutions.local/commands. There is no /api prefix. The documentation includes a complete command example when available."
+            "Unknown institution route: {method} {path}. Use GET {base}/ for documentation, GET {base}/model, GET {base}/facts, or POST {base}/commands. There is no /api prefix. The documentation includes a complete command example when available."
+        );
+        ensure!(
+            self.generation.is_none(),
+            "Company foundation is read-only; execute a module's commands"
         );
         let input: Input = serde_json::from_str(body.unwrap_or("{}")).map_err(|error| {
-            anyhow::anyhow!("Invalid institution command: {error}. POST https://institutions.local/commands with a JSON object containing required command_id and exact story, participants mapping Story tokens to instance IDs, and fields for creation values. For http.request, put this JSON in inputs.body as a string. Read GET https://institutions.local/model for the exact Stories and command guide.")
+            anyhow::anyhow!("Invalid institution command: {error}. POST {base}/commands with a JSON object containing required command_id and exact story, participants mapping Story tokens to instance IDs, and fields for creation values. For http.request, put this JSON in inputs.body as a string. Read GET {base}/model for the exact Stories and command guide.")
         })?;
         ensure!(
             !input.command_id.is_empty() && input.command_id.len() <= 128,
@@ -244,7 +345,7 @@ impl State {
             self.stories
                 .as_array()
                 .is_some_and(|stories| stories.iter().any(|s| s["story"] == input.story)),
-            "Unknown Story. Copy one of these exact Story sentences verbatim: {}. Bind instance IDs in participants and creation values in fields; do not rewrite the Story or append values. See GET https://institutions.local/model for the command guide.",
+            "Unknown Story. Copy one of these exact Story sentences verbatim: {}. Bind instance IDs in participants and creation values in fields; do not rewrite the Story or append values. See GET {base}/model for the command guide.",
             json!(
                 self.stories
                     .as_array()
@@ -297,6 +398,7 @@ impl State {
             serde_json::to_vec(&response["snapshot"])?.len() <= 262144,
             "Institution state exceeds 256 KiB"
         );
+        self.check_protected(&response["snapshot"])?;
         self.snapshot = response["snapshot"].clone();
         let result = response["result"].clone();
         self.receipts.insert(
@@ -308,6 +410,21 @@ impl State {
             },
         );
         Ok(result)
+    }
+
+    fn check_protected(&self, snapshot: &Value) -> Result<()> {
+        let actual: Vec<_> = snapshot["instances"]
+            .as_array()
+            .ok_or_else(|| anyhow::anyhow!("Invalid snapshot"))?
+            .iter()
+            .filter(|v| self.protected_types.iter().any(|t| v["type"] == *t))
+            .cloned()
+            .collect();
+        ensure!(
+            actual == self.protected,
+            "Generated command would change protected foundation facts or identity"
+        );
+        Ok(())
     }
 }
 

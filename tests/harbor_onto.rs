@@ -130,6 +130,23 @@ fn onto_harbor_commercial_cycle_survives_restart_fork_and_month_end() -> Result<
     assert_eq!(cash(&world, "Firm:harbor"), 500000);
     assert_eq!(instances(&world, "Firm").len(), 14);
 
+    let mut routed = Run::new(Config::default())?;
+    routed.experiment = Some(experiments::Experiment::HarborOnto);
+    routed.world = world.clone();
+    for path in ["/api", "/directory", "/offers", "/contracts", "/hosting"] {
+        let action = tools::call(
+            "http.request",
+            json!({"method":"GET","url":format!("https://institutions.local{path}")}),
+        );
+        assert!(
+            matches!(
+                experiments::resolve(&routed, &action)?,
+                frontier::construction::Resolution::Existing
+            ),
+            "Harbor route {path} must reach its authored adapter"
+        );
+    }
+
     world.apply(&tools::call(
         "mail.send",
         json!({"to":"quay@workspace.local","subject":"Directory","body":"Can we discuss a directory?"}),

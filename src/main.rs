@@ -45,6 +45,8 @@ impl IntoResponse for Error {
 }
 type Api<T> = std::result::Result<Json<T>, Error>;
 
+mod action_transport;
+mod jit_proof;
 #[cfg(test)]
 #[path = "main_tests.rs"]
 mod tests;
@@ -73,9 +75,9 @@ async fn main() -> Result<()> {
         args.len() <= 3
             && matches!(
                 args.get(1).map(String::as_str),
-                None | Some("demo" | "replay" | "audit" | "doctor")
+                None | Some("demo" | "replay" | "audit" | "doctor" | "prove")
             ),
-        "Usage: frontier [doctor|demo|replay RUN_ID|audit RUN_ID]"
+        "Usage: frontier [doctor|demo|replay RUN_ID|audit RUN_ID|prove SPEC.json]"
     );
     if args.get(1).map(String::as_str) == Some("doctor") {
         println!("{}", frontier::workspace::doctor()?);
@@ -151,7 +153,7 @@ async fn main() -> Result<()> {
     let app = App {
         store: Arc::new(Mutex::new(store)),
         client: reqwest::Client::builder()
-            .timeout(Duration::from_secs(90))
+            .timeout(Duration::from_secs(300))
             .build()?,
         key: std::env::var("OPENROUTER_API_KEY")
             .ok()
@@ -159,6 +161,12 @@ async fn main() -> Result<()> {
         active: Arc::new(AtomicBool::new(false)),
         inference_url: "https://openrouter.ai/api/v1/chat/completions".into(),
     };
+    if args.get(1).map(String::as_str) == Some("prove") {
+        let spec = args
+            .get(2)
+            .ok_or_else(|| anyhow::anyhow!("Usage: frontier prove SPEC.json"))?;
+        return jit_proof::run(&app, spec).await;
+    }
     let router = Router::new()
         .route(
             "/",
@@ -300,6 +308,7 @@ struct InstitutionRunRequest {
     template: Option<String>,
     config: Config,
     institution: frontier::ontology::Definition,
+    generation: Option<frontier::institutions::Policy>,
 }
 #[derive(Deserialize)]
 struct InstitutionSeedQuery {
@@ -320,10 +329,20 @@ async fn create_institutions(
 ) -> Api<Run> {
     mutation(&headers)?;
     let harbor = match request.template.as_deref() {
-        None | Some("accounts") => false,
+        None | Some("accounts" | "generative") => false,
         Some("harbor") => true,
         _ => return Err(anyhow::anyhow!("Unknown institution template").into()),
     };
+    if harbor && request.generation.is_some() {
+        return Err(anyhow::anyhow!(
+            "Harbor Works uses its authored model and cannot enable module generation"
+        )
+        .into());
+    }
+    if request.template.as_deref() == Some("generative") && request.generation.is_none() {
+        return Err(anyhow::anyhow!("The generative template requires a generation policy").into());
+    }
+    let generative = request.generation.is_some();
     let mut config = request.config;
     if config.demo {
         return Err(anyhow::anyhow!("Institution experiments require live inference").into());
@@ -340,6 +359,8 @@ async fn create_institutions(
         .unwrap_or_else(|| {
             if harbor {
                 "Onto · Harbor Works"
+            } else if generative {
+                "Onto · Generated company"
             } else {
                 "Onto · Accounts"
             }
@@ -351,12 +372,17 @@ async fn create_institutions(
     if harbor && request.institution != experiments::institutions::definition("harbor")? {
         return Err(anyhow::anyhow!("Harbor Works uses its authored model, caller and epoch; edit the template source and rebuild to change it").into());
     }
+    // Validate the authored model and optional foundation before provider metadata or persistence.
     let mut world = tokio::task::spawn_blocking(move || {
-        if harbor {
-            experiments::harbor_onto::seed(request.institution)
+        let mut world = if harbor {
+            experiments::harbor_onto::seed(request.institution)?
         } else {
-            experiments::institutions::world(request.institution, &task)
+            experiments::institutions::world(request.institution, &task)?
+        };
+        if let Some(policy) = request.generation {
+            frontier::institutions::enable(world.ontology.as_mut().unwrap(), policy)?;
         }
+        Ok::<_, anyhow::Error>(world)
     })
     .await
     .map_err(anyhow::Error::from)??;
@@ -548,8 +574,10 @@ async fn validate_actor(app: &App, config: &mut Config) -> Result<()> {
             catalog["data"]["id"] == *model,
             "OpenRouter model ID did not match"
         );
-        if role == "Actor"
-            && (config.structured_actions || config.memory.is_some())
+        // Generated Onto source also uses json_schema, not just json_object.
+        // response_format alone does not guarantee that an endpoint supports it.
+        if (role == "Generator"
+            || (role == "Actor" && (config.structured_actions || config.memory.is_some())))
             && let Some(endpoints) = catalog["data"]["endpoints"].as_array_mut()
         {
             endpoints.retain(|e| {
@@ -1050,13 +1078,12 @@ async fn step(app: &App, id: &str) -> Result<()> {
     if run.world.tools.is_some()
         && let Err(error) = tools::validate_action(&action)
     {
-        return execute_action(
-            app,
-            id,
-            action,
-            Some(format!("Invalid tool input: {error}")),
-        )
-        .await;
+        let feedback = action_transport::input_error(
+            &action,
+            &run.world.tools.as_ref().unwrap().definitions,
+            &error,
+        );
+        return execute_action(app, id, action, Some(feedback)).await;
     }
     if run.experiment.is_some() {
         let construction = construct(app, id, &action).await;
@@ -1153,6 +1180,7 @@ async fn execute_action(
 }
 
 async fn construct(app: &App, id: &str, action: &Action) -> Result<()> {
+    let started = std::time::Instant::now();
     let request = {
         let mut store = app.store.lock().unwrap();
         let mut run = store.load(id)?;
@@ -1174,16 +1202,77 @@ async fn construct(app: &App, id: &str, action: &Action) -> Result<()> {
         )?;
         request
     };
-    let response = infer(app, id, "world", construction::GENERATOR, json!(&request)).await?;
-    let proposal: construction::Proposal = serde_json::from_str(&response)?;
+    let executable = request.directive.requirements["functionality"] == "onto.module.v1";
+    let system = if executable {
+        frontier::institutions::GENERATOR
+    } else {
+        construction::GENERATOR
+    };
+    let repairs = if executable {
+        request.directive.requirements["repair_attempts"]
+            .as_u64()
+            .unwrap_or(0)
+            .min(2)
+    } else {
+        0
+    };
+    let mut input = json!(&request);
+    let mut attempt = 0u64;
+    let mut validation_ms = 0u128;
+    let (candidate, proposal) = loop {
+        // Provider failures stop immediately. Only local validation can request repair.
+        let response = infer(app, id, "world", system, input.clone()).await?;
+        let validation_started = std::time::Instant::now();
+        let validated: Result<_> = async {
+            let proposal: construction::Proposal = if executable {
+                frontier::institutions::proposal(&request, &response)?
+            } else {
+                serde_json::from_str(&response)?
+            };
+            // Compile outside the database lock and Tokio workers.
+            let mut candidate = app.store.lock().unwrap().load(id)?;
+            let validation_request = request.clone();
+            let validation_proposal = proposal.clone();
+            let candidate = tokio::task::spawn_blocking(move || {
+                construction::publish(&mut candidate, &validation_request, &validation_proposal)?;
+                Ok::<_, anyhow::Error>(candidate)
+            })
+            .await??;
+            Ok((candidate, proposal))
+        }
+        .await;
+        validation_ms += validation_started.elapsed().as_millis();
+        match validated {
+            Ok(value) => break value,
+            Err(error) => {
+                let mut store = app.store.lock().unwrap();
+                let mut run = store.load(id)?;
+                let repair = attempt < repairs && construction::basis(&run) == request.basis;
+                store.commit(&mut run, "construction_validation", "Generated proposal rejected",
+                    json!({"request_id":request.request_id,"attempt":attempt+1,"error":error.to_string(),"repair":repair}))?;
+                if !repair {
+                    return Err(error);
+                }
+                input["context"]["supporting"] = json!({
+                    "previous_response":response.chars().take(40000).collect::<String>(),
+                    "validation_error":error.to_string().chars().take(4000).collect::<String>()
+                });
+                attempt += 1;
+            }
+        }
+    };
     let mut store = app.store.lock().unwrap();
     let mut run = store.load(id)?;
-    construction::publish(&mut run, &request, &proposal)?;
+    ensure!(
+        construction::basis(&run) == request.basis,
+        "World changed during construction validation"
+    );
+    run.world = candidate.world;
     store.commit(
         &mut run,
         "published",
         "Resource published",
-        json!({"proposal":proposal}),
+        json!({"proposal":proposal,"request_id":request.request_id,"latency_ms":started.elapsed().as_millis(),"validation_ms":validation_ms,"generation_attempts":attempt+1,"request_bytes":serde_json::to_vec(&request)?.len()}),
     )?;
     Ok(())
 }
@@ -1286,13 +1375,17 @@ fn inference_request(run: &Run, role: &str, system: &str, input: &Value) -> Resu
     } else {
         &run.config.world_model
     };
-    let mut request = json!({"model":model,"messages":[{"role":"system","content":system},{"role":"user","content":serde_json::to_string(&input)?}],"temperature":0.7,"max_tokens":1024,"response_format":{"type":"json_object"},"provider":{"only":[run.config.provider],"allow_fallbacks":false,"require_parameters":true,"max_price":{"prompt":2,"completion":8}},"usage":{"include":true}});
+    let mut request = json!({"model":model,"messages":[{"role":"system","content":system},{"role":"user","content":serde_json::to_string(&input)?}],"temperature":0.7,"max_tokens":1024,"response_format":{"type":"json_object"},"provider":{"only":[run.config.provider],"allow_fallbacks":false,"require_parameters":true,"max_price":{"prompt":frontier::INPUT_USD_PER_MILLION,"completion":frontier::OUTPUT_USD_PER_MILLION}},"usage":{"include":true}});
     let settings = if role == "actor" || role == "memory" {
         &run.config.actor_settings
     } else {
         &run.config.generator_settings
     };
     if let Some(settings) = settings {
+        ensure!(
+            !settings.endpoint.trim().is_empty(),
+            "Provider endpoint is unresolved; validate settings before inference"
+        );
         settings.apply(&mut request);
     }
     if role == "actor" && run.config.structured_actions {
@@ -1302,20 +1395,17 @@ fn inference_request(run: &Run, role: &str, system: &str, input: &Value) -> Resu
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("Structured actions require general tools"))?
             .definitions;
-        let names: Vec<_> = definitions
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|d| d["name"].clone())
-            .collect();
-        request["response_format"] = json!({"type":"json_schema","json_schema":{"name":"actor_action_v1","strict":true,"schema":{"type":"object","properties":{"kind":{"type":"string","enum":names},"inputs_json":{"type":"string","description":"One JSON object encoded as a string, matching the chosen tool's input schema."}},"required":["kind","inputs_json"],"additionalProperties":false}}});
-        request["messages"][0]["content"] = json!(format!(
-            "{system}\nOutput transport v1: return exactly one JSON object with kind and inputs_json. inputs_json is a JSON-encoded string containing the inputs object for the selected tool. This transport overrides the kind/inputs response spelling in the tool policy; tool schemas and their meaning are unchanged. Do not emit multiple actions or call external tools. Example: {{\"kind\":\"mail.list\",\"inputs_json\":\"{{}}\"}}."
-        ));
+        request["response_format"] = action_transport::response_format(definitions)?;
+        request["messages"][0]["content"] =
+            json!(format!("{system}\n{}", action_transport::INSTRUCTIONS));
     }
     if role == "memory" {
-        request["max_tokens"] = json!(4096);
+        // Reasoning consumes the same output allowance as the memory JSON.
+        request["max_tokens"] = json!(request["max_tokens"].as_u64().unwrap().max(4096));
         request["response_format"] = memory::response_format();
+    }
+    if role == "world" && input["directive"]["requirements"]["functionality"] == "onto.module.v1" {
+        request["response_format"] = frontier::institutions::response_format();
     }
     Ok(request)
 }
@@ -1324,20 +1414,13 @@ fn parse_actor_action(run: &Run, response: &str) -> Result<Action> {
     if !run.config.structured_actions {
         return Ok(serde_json::from_str(response)?);
     }
-    #[derive(Deserialize)]
-    #[serde(deny_unknown_fields)]
-    struct Envelope {
-        kind: String,
-        inputs_json: String,
-    }
-    let envelope: Envelope = serde_json::from_str(response)?;
-    ensure!(
-        envelope.inputs_json.len() <= 65536,
-        "Action inputs exceed 64 KiB"
-    );
-    let inputs: Value = serde_json::from_str(&envelope.inputs_json)?;
-    ensure!(inputs.is_object(), "Action inputs must be a JSON object");
-    Ok(tools::call(&envelope.kind, inputs))
+    let definitions = &run
+        .world
+        .tools
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("Structured actions require general tools"))?
+        .definitions;
+    action_transport::parse(response, definitions)
 }
 
 fn actor_system(run: &Run) -> &str {
@@ -1457,8 +1540,11 @@ async fn infer_attempt(
         );
         let request = inference_request(&run, role, system, &input)?;
         // Preserve the minimum reservation, accounting for larger configured completions.
-        let reservation = (serde_json::to_vec(&request)?.len() as f64 * 0.000002
-            + request["max_tokens"].as_u64().unwrap() as f64 * 0.000008)
+        let reservation = (serde_json::to_vec(&request)?.len() as f64
+            * frontier::INPUT_USD_PER_MILLION
+            / 1_000_000.0
+            + request["max_tokens"].as_u64().unwrap() as f64 * frontier::OUTPUT_USD_PER_MILLION
+                / 1_000_000.0)
             .max(0.10);
         ensure!(
             run.charged + run.reserved + reservation <= run.config.dollar_limit + 1e-9,

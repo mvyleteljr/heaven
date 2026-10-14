@@ -109,7 +109,8 @@ button:disabled {
 .source-label {
   margin-top: 16px;
 }
-#institution-source {
+#institution-source,
+#generation-brief {
   width: 100%;
   padding: 12px;
   border: 1px solid #cccec5;
@@ -120,6 +121,10 @@ button:disabled {
 }
 #institution-source:read-only {
   background: #f0f1ec;
+}
+#generation-brief {
+  font: inherit;
+  line-height: 1.6;
 }
 .institution-world > .node,
 .institution-world > details {

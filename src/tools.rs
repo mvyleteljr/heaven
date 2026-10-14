@@ -68,7 +68,7 @@ pub fn definitions() -> Value {
         (
             "finish",
             "Return a final response and end the run.",
-            json!({"message":string}),
+            json!({"message":{"type":"string","minLength":1}}),
             vec!["message"],
         ),
     ];
@@ -228,9 +228,14 @@ fn parse(action: &Action) -> Result<Call> {
         serde_json::to_vec(&action.inputs)?.len() <= 65536,
         "Tool input exceeds 64 KiB"
     );
-    Ok(serde_json::from_value(
-        json!({"kind":action.kind,"inputs":action.inputs}),
-    )?)
+    let parsed = serde_json::from_value(json!({"kind":action.kind,"inputs":action.inputs}))?;
+    if let Call::Finish { message } = &parsed {
+        ensure!(
+            !message.trim().is_empty(),
+            "finish requires a non-empty message reporting confirmed results or remaining problems"
+        );
+    }
+    Ok(parsed)
 }
 pub(crate) fn http(status: u16, body: Value) -> Value {
     let mut body = body.to_string();

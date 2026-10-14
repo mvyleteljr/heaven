@@ -19,6 +19,8 @@ fn main() {
         "src",
         "web",
         "examples/onto",
+        "examples/jit/foundation.onto",
+        "examples/jit/institution-run.json",
         "Cargo.toml",
         "Cargo.lock",
         "build.rs",

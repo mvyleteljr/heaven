@@ -3,7 +3,15 @@
 A research prototype for an evolving world. Start with a small seed. Run an autonomous actor. Construct missing world data when needed. Keep the resulting state and consequences.
 
 For the current implementation status, partner setup, audit commands, and optional
-Onto integration, start with [HANDOFF.md](HANDOFF.md).
+Onto integration, start with [HANDOFF.md](HANDOFF.md). The current acceptance target
+is just-in-time executable world generation: consistency, persistent revisits,
+generated operations, downstream effects of restructuring, and measured latency.
+The optional Onto module profile and its deterministic/live proof commands are
+documented in the handoff. The October 14 live generator trial passed 34 checks
+across three executable modules at 2.87–3.19 seconds per publication; a separate
+process verified persisted receipts and fork execution. See the
+[full live evidence](examples/jit/live-result-2026-10-14.json). This is a scripted
+infrastructure benchmark, not autonomous business-transformation evidence.
 
 Frontier supports two research goals:
 
@@ -47,7 +55,7 @@ The version-1 request has `request_id`, `basis` (world ID and state hash), `dire
 
 The version-1 proposal copies the request ID and basis. Its result is `proposed` with resources, or `failed` with a reason. Each resource specifies its target, operation, initial state, interface, functionality identifier, and dependencies. The engine rejects stale proposals, changed identities, out-of-scope resources, unsupported functionality, invalid data, and missing dependencies. Rejection does not publish partial state.
 
-This version permits one new resource per request. Changes to existing resources and generated executable code through this contract are **not implemented**. Functionality identifiers select engine-written handlers. The construction engine is in `src/construction.rs`. The neutral director is ordinary code, not a model. Bellwether adds experiment-specific, code-driven institutional responses.
+This version permits one new resource per request. Ordinary functionality identifiers select engine-written handlers. The optional `onto.module.v1` profile instead validates and executes generated Ontolang against an immutable foundation. Published source is fixed; modeled policy and facts can change through Stories. Cross-module transactions and arbitrary source/schema migrations are not implemented. The construction engine is in `src/construction.rs`. The director is ordinary code, not a model. Bellwether adds experiment-specific, code-driven institutional responses.
 
 Researcher events contain director decisions, requests, raw model responses, publications, and failures. Actor observations contain the configured task, tools, tool policy, and action/result history. They do not contain the construction journal. A construction failure returns an ordinary unavailable-resource error; its internal reason stays in the journal. Generated prose can still reveal simulation cues. This separation does not prove low evaluation awareness.
 
@@ -59,6 +67,7 @@ Researcher events contain director decisions, requests, raw model responses, pub
 - **Legacy workplace:** The older workplace fixture remains available through `/api/runs` and the CLI.
 - **Onto · Accounts:** The existing authored transfer model is available in the browser with editable source and caller identity before saving. Onto enforces ownership, transfer rules and derived balances. The UI shows public facts, Stories, receipts and source at each checkpoint.
 - **Onto · Harbor Works:** A separate model in `examples/onto/harbor-works.onto` governs the fourteen organizations, agreement lifecycle, balances, capacity, hosting charges and association continuity purchases. Frontier supplies the clock, customer scheduling and real hosted-service verification. All modeled facts are public. The original Rust Harbor Works experiment remains available. See [model details](examples/onto/HARBOR-WORKS.md).
+- **Onto · Generated company:** A separate immutable foundation with capabilities generated when the actor discovers `/modules/NAME`. The UI exposes the foundation, generation brief and limits before saving, then shows each published module's source, facts and Stories. See [generation scope and evidence](HANDOFF.md#current-target-just-in-time-executable-world-generation).
 
 To create the records workload, POST a normal live run configuration to `/api/records`, with the `X-Frontier-Client: research-ui` header. Supply model IDs, provider, and action, expansion, call, and dollar limits. Omit prompt fields to use the audit defaults. It uses real inference; scripted mode is rejected. Start it through `/api/runs/{id}/control` with `{"command":"run"}`. The browser can inspect the saved run, step it, and show its construction evidence. The browser defaults to Bellwether and also supports the flower fixture.
 
@@ -82,11 +91,13 @@ scripts/dev down     # stop; saved runs are retained
 Open [localhost:3000](http://localhost:3000). For a free browser trial, choose **Willow & Stem → Scripted example → Validate & save → Run**. Scripted validation works without OpenRouter or an API key. Bellwether uses live inference. Export `OPENROUTER_API_KEY` in the terminal before `scripts/dev up` to enable it; restarting with `up` loads changed credentials and rebuilds changed Rust/web sources. An untracked `.env` file also works with Compose; keep it private.
 
 For the Onto examples, build the optional runtime using [HANDOFF.md](HANDOFF.md),
-then select **Onto · Accounts** or **Onto · Harbor Works**. Expand **Ontolang
+then select **Onto · Accounts**, **Onto · Harbor Works**, or **Onto · Generated company**. Expand **Ontolang
 model** to inspect the source. **Validate & save** creates a paused run; **Step**
 and **Run** invoke the configured model. Accounts defaults to a $0.25 / 30-action
-ceiling; Onto Harbor defaults to $1 / 100 actions. The free
-`scripts/dev check-onto` suite exercises both models without inference.
+ceiling; Onto Harbor defaults to $1 / 100 actions. Generated company defaults to
+$0.50 / 60 actions / six construction attempts. The free `scripts/dev check-onto`
+and `scripts/dev check-jit` suites exercise the authored models and generated-module
+infrastructure without inference.
 
 `PORT=3001 scripts/dev up` selects another host port. Docker publishes only on host loopback. Runs live in the Compose `data` volume, independently of the checkout's ignored `data/` directory. `down` preserves it; **`docker compose down -v` deletes it**. Source is mounted read-only; target and registry caches use separate volumes. Edit files on the host and rerun `up`. The initial build needs network access; tests make no paid inference calls.
 
@@ -168,7 +179,7 @@ and includes workspace/mail changes in the trace and raw checkpoint state.
 ## Boundaries and limits
 
 - One active loop per server; up to 1,000 actions, 100 expansions, and 1,500 model calls per trajectory. Defaults remain 100/20/120; the checked-in long-run configuration uses 240/40/350. Pause takes effect at action boundaries, including an in-flight world expansion.
-- A live request reserves at least $0.10 before sending. Full request size is bounded by the saved `context_limit_bytes` setting (40,000–1,048,576 bytes). New browser runs default to 256,000 bytes; API requests that omit it and preserved runs retain 40,000 bytes. Output defaults to 1,024 tokens; saved settings can select up to 8,192. OpenRouter price ceilings are $2/M input and $8/M output tokens. Reported cost replaces the reservation when available; uncertain requests retain it. No automatic retry or provider fallback. Use an OpenRouter key-level spending limit as the external billing backstop; app reservations are not a billing guarantee.
+- A live request reserves at least $0.10 before sending. Full request size is bounded by the saved `context_limit_bytes` setting (40,000–1,048,576 bytes). New browser runs default to 256,000 bytes; API requests that omit it and preserved runs retain 40,000 bytes. Output defaults to 1,024 tokens; saved settings can select up to 32,768. OpenRouter price ceilings are $4/M input and $20/M output tokens. Endpoint validation, provider routing and worst-case reservations use the same ceilings. Reported cost replaces the reservation when available; uncertain requests retain it. No automatic retry or provider fallback. Use an OpenRouter key-level spending limit as the external billing backstop; app reservations are not a billing guarantee.
 - Forks inherit consumed budget as experimental state; running multiple branches incurs additional real charges. There is no account-wide spend cap in this application.
 - Models must support the requested JSON response, temperature, and token-limit parameters at the chosen provider. Unsupported combinations fail visibly. Both roles currently use the same pinned provider, though model IDs can differ.
 - New resources are append-only. Generation cannot modify permissions or existing document bodies. Restricted document bodies are excluded from both actor observations and generator context. Generated prose is **not** semantically verified: it can still contradict established facts or infer private information. Human fidelity review remains necessary.
@@ -234,11 +245,11 @@ curl --fail-with-body http://localhost:3000/api/bellwether \
 
 The summary distinguishes facts, commitments, uncertainties, and plans. Every note cites supplied transcript indices; byte limits, citation ranges, and schema are checked before atomic publication. The full append-only transcript is retained, and each summary records its covered prefix hash. `history.search` locates earlier observations; `history.read` returns the exact serialized observation in UTF-8-safe byte pages. Neither tool exposes private world state or researcher evidence. Actor memory never enters construction-generator context.
 
-Memory uses the actor model/settings with a 4,096-token output cap. Its requests, responses, charges, and publication are distinct events, sharing the run's call and dollar limits. They consume no world time or action. Pause/restart/fork preserve summary, source history, and spending. A failed summary leaves the previous memory intact and stops the loop without automatic retry. The UI shows memory at each checkpoint and its inference evidence. Live memory requires explicit actor settings and a structured-output-capable endpoint.
+Memory uses the actor model/settings with its configured output allowance (at least 4,096 tokens), including room for reasoning. Its requests, responses, charges, and publication are distinct events, sharing the run's call and dollar limits. They consume no world time or action. Pause/restart/fork preserve summary, source history, and spending. A failed summary leaves the previous memory intact and stops the loop without automatic retry. The UI shows memory at each checkpoint and its inference evidence. Live memory requires explicit actor settings and a structured-output-capable endpoint.
 
 **Citations validate provenance, not truth.** A cited model summary can still misinterpret an error, overgeneralize, or omit an obligation. The live audit demonstrated this: a rejected deadline expressed in seconds was summarized as a festival date being too soon. Exact recall and files are available to the actor, but do not guarantee it will check. Evaluate memory fidelity separately from runtime reliability and business performance.
 
-`structured_actions: true` requests a strict `kind` / `inputs_json` response envelope; the JSON string decodes to the ordinary tool inputs. This avoids provider-specific optional-field schema transformations. Rust still parses one response only and validates tool inputs; there is no JSON repair, duplicate-action execution, or fallback. Legacy runs keep `kind` / `inputs`. Both protocols and actual provider requests are recorded. See [OpenRouter structured outputs](https://openrouter.ai/docs/guides/features/structured-outputs). Providers can still violate the requested format, as the GPT-5.4 Mini endpoint did during this audit.
+`structured_actions: true` now requests a strict typed `action: {kind, inputs}` response. Each tool's branch requires its actual arguments, including `finish.message` and HTTP `method`/`url`. Optional fields use null on the wire; HTTP headers use name/value pairs that the host converts to its ordinary map. Valid older `kind` / `inputs_json` responses remain readable. Non-structured runs retain `kind` / `inputs`. The host validates responses and records provider protocol failures without automatic retry; it does not fabricate missing arguments or completion reports. Actual provider requests and responses remain evidence. This replaces the earlier envelope whose unconstrained JSON string allowed empty tool arguments. See [OpenRouter structured outputs](https://openrouter.ai/docs/guides/features/structured-outputs).
 
 The free regression trajectory executes over 220 actor steps, builds and reuses a generated public profile, performs exact history recall, compacts at least 15 times, reopens SQLite midway, and reaches day 30 with all four institutional check-ins. Separate real sandbox tests cover deployment, delivery, acceptance, idempotent payment, and conservation. These fixtures test the harness, not model competence.
 

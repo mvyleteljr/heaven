@@ -16,6 +16,7 @@
           ><button id="run">Run</button><button id="pause" hidden>Pause</button>
         </div>
       </header>
+      <p id="live-progress" role="status" aria-live="polite"></p>
       <p id="error" role="alert" hidden></p>
       <details id="settings">
         <summary>Run settings</summary>
@@ -26,6 +27,8 @@
               <option value="institutions">Onto · Accounts</option>
               <option value="harbor_onto">Onto · Harbor Works</option>
               <option value="flowers">Willow & Stem · fixture</option>
+              <option value="institutions_generated">Onto · Generated company</option>
+              <option value="recall" disabled>Long-horizon recall</option>
               <option value="records" disabled>Records · verification</option>
             </select></label
           >
@@ -70,7 +73,7 @@
                 id="max-tokens"
                 type="number"
                 min="1"
-                max="8192"
+                max="32768"
                 value="1024" /></label
             ><label
               >Reasoning effort<select id="reasoning">
@@ -106,7 +109,7 @@
                 id="generator-max-tokens"
                 type="number"
                 min="1"
-                max="8192"
+                max="32768"
                 value="1024"
             /></label>
             <label
@@ -146,6 +149,15 @@
         </div>
         <label class="source-label">Ontolang source<textarea id="institution-source" rows="18" spellcheck="false"></textarea></label>
         <p id="institution-source-note" class="field-note"></p>
+        <section id="institution-generation" hidden>
+          <h3>Capability generation</h3>
+          <label class="source-label">Company brief<textarea id="generation-brief" rows="5" required maxlength="8000"></textarea></label>
+          <div class="institution-fields">
+            <label>Maximum stored capabilities<input id="generation-max-modules" type="number" min="1" max="128" step="1" required /></label>
+            <label>Validation repairs per capability<input id="generation-repairs" type="number" min="0" max="2" step="1" required /></label>
+          </div>
+          <p class="field-note">Missing capabilities are generated when discovered. Each module preserves the shared foundation and owns its mutable facts. Generation and repairs use the same run budget as actor calls. Saving creates a paused run.</p>
+        </section>
       </details>
       <div class="seeds">
         <details>

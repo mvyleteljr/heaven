@@ -280,7 +280,7 @@ async fn institution_templates_validate_and_create_independent_paused_runs() -> 
 async fn missing_runtime_preserves_template_source_and_existing_seed_routes() -> Result<()> {
     let dir = tempfile::tempdir()?;
     let (_server, client, base) = server(&dir.path().join("missing-runtime.sqlite"), None).await?;
-    for template in ["accounts", "harbor"] {
+    for template in ["accounts", "harbor", "generative"] {
         let seed = read(
             &client,
             format!("{base}/institution-seed?template={template}"),
@@ -310,5 +310,79 @@ async fn missing_runtime_preserves_template_source_and_existing_seed_routes() ->
     assert!(flower["world"]["tools"].is_object());
     assert!(flower["world"]["ontology"].is_null());
     assert!(!flower["tools"].as_array().unwrap().is_empty());
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "Requires the pinned optional Onto bundle and the Linux sandbox"]
+async fn generative_template_saves_a_paused_foundation_and_keeps_authored_models_separate()
+-> Result<()> {
+    let dir = tempfile::tempdir()?;
+    let runtime = std::env::var("FRONTIER_ONTO_RUNTIME")?;
+    let (_server, client, base) = server(
+        &dir.path().join("generative.sqlite"),
+        Some(Path::new(&runtime)),
+    )
+    .await?;
+    let seed = read(
+        &client,
+        format!("{base}/institution-seed?template=generative"),
+    )
+    .await?;
+    assert_eq!(seed["runtime_available"], true, "{seed}");
+    assert_eq!(seed["template"], "generative");
+    assert_eq!(seed["world"]["ontology"]["stories"], json!([]));
+    assert_eq!(seed["world"]["ontology"]["generation"], seed["generation"]);
+    assert_eq!(seed["config"]["structured_actions"], true);
+    let mut request = json!({
+        "template":"generative", "institution":seed["institution"],
+        "generation":seed["generation"],
+        "config":config("Discover capabilities while preserving the foundation.")
+    });
+    let run: Value = post(&client, format!("{base}/institutions"), &request)
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    assert_paused(&run);
+    assert_eq!(run["experiment"], "institutions");
+    assert_eq!(run["name"], "Onto · Generated company");
+    assert_eq!(run["world"]["ontology"]["generation"], seed["generation"]);
+    assert!(
+        run["world"]["ontology"]["modules"]
+            .as_object()
+            .is_none_or(|m| m.is_empty())
+    );
+
+    request.as_object_mut().unwrap().remove("generation");
+    let response = post(&client, format!("{base}/institutions"), &request)
+        .send()
+        .await?;
+    assert_eq!(
+        response.status(),
+        400,
+        "A generative template must enable generation"
+    );
+
+    for template in ["accounts", "harbor"] {
+        let authored = read(
+            &client,
+            format!("{base}/institution-seed?template={template}"),
+        )
+        .await?;
+        assert!(authored["world"]["ontology"]["generation"].is_null());
+        request["template"] = json!(template);
+        request["institution"] = authored["institution"].clone();
+        request["generation"] = seed["generation"].clone();
+        let response = post(&client, format!("{base}/institutions"), &request)
+            .send()
+            .await?;
+        assert_eq!(
+            response.status(),
+            400,
+            "Authored Stories cannot be a generative foundation"
+        );
+    }
     Ok(())
 }

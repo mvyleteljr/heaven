@@ -1,4 +1,4 @@
-//! Authored Ontolang templates. Previewing a seed never invokes an inference provider.
+//! Ontolang templates. Previewing a seed never invokes an inference provider.
 use crate::{World, ontology, tools};
 use anyhow::{Result, bail};
 use serde_json::{Value, json};
@@ -18,6 +18,11 @@ pub fn definition(template: &str) -> Result<ontology::Definition> {
             "harbor-works.onto",
             include_str!("../../examples/onto/harbor-works.onto"),
             super::harbor_onto::ACTOR,
+        ),
+        "generative" => (
+            "foundation.onto",
+            include_str!("../../examples/jit/foundation.onto"),
+            "Operator:Ada",
         ),
         _ => bail!("Unknown institution template"),
     };
@@ -53,8 +58,15 @@ pub fn world(definition: ontology::Definition, task: &str) -> Result<World> {
 pub fn preview(template: &str) -> Result<Value> {
     let definition = definition(template)?;
     let harbor = template == "harbor";
+    let generative = template == "generative";
+    let example: Value =
+        serde_json::from_str(include_str!("../../examples/jit/institution-run.json"))?;
     let task = if harbor {
         super::harbor_onto::TASK
+    } else if generative {
+        example["config"]["actor_user_prompt"]
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("Missing generative example task"))?
     } else {
         ACCOUNTS_TASK
     };
@@ -65,18 +77,30 @@ pub fn preview(template: &str) -> Result<Value> {
     };
     let name = if harbor {
         "Onto · Harbor Works"
+    } else if generative {
+        "Onto · Generated company"
     } else {
         "Onto · Accounts"
     };
     let description = if harbor {
         "A separate public-facts Harbor Works experiment. Ontolang governs organizations, agreements, balances and service evidence; Frontier runs the clock, counterparties and isolated handlers."
+    } else if generative {
+        "An immutable company foundation with executable Ontolang capabilities generated as the agent discovers them. Each module has its own persistent facts and Stories. Generation uses the run's call and dollar limits."
     } else {
         "An authored ledger with ownership, transfers and derived balances. All institution facts are public."
     };
     let result = if harbor {
         super::harbor_onto::seed(definition.clone())
     } else {
-        world(definition.clone(), task)
+        world(definition.clone(), task).and_then(|mut world| {
+            if generative {
+                crate::institutions::enable(
+                    world.ontology.as_mut().unwrap(),
+                    serde_json::from_value(example["generation"].clone())?,
+                )?;
+            }
+            Ok(world)
+        })
     };
     let (world, error) = match result {
         Ok(world) => (world, None),
@@ -88,7 +112,10 @@ pub fn preview(template: &str) -> Result<Value> {
             (world, Some(error.to_string()))
         }
     };
-    Ok(
-        json!({"world":world,"system":system,"tools":tools::definitions(),"institution":definition,"name":name,"description":description,"runtime_available":error.is_none(),"runtime_error":error,"template":template}),
-    )
+    let mut seed = json!({"world":world,"system":system,"tools":tools::definitions(),"institution":definition,"name":name,"description":description,"runtime_available":error.is_none(),"runtime_error":error,"template":template});
+    if generative {
+        seed["generation"] = example["generation"].clone();
+        seed["config"] = example["config"].clone();
+    }
+    Ok(seed)
 }

@@ -12,6 +12,7 @@ pub mod business;
 pub mod construction;
 pub mod experiments;
 pub mod hosting;
+pub mod institutions;
 pub mod memory;
 pub mod ontology;
 pub use experiments::flowers;
@@ -190,6 +191,10 @@ pub struct ActorSettings {
     #[serde(default)]
     pub endpoint: String,
 }
+// Provider routing and preflight reservations must use the same price ceilings.
+pub const INPUT_USD_PER_MILLION: f64 = 4.0;
+pub const OUTPUT_USD_PER_MILLION: f64 = 20.0;
+
 impl ActorSettings {
     pub fn validate(&self) -> Result<()> {
         ensure!(
@@ -202,8 +207,8 @@ impl ActorSettings {
             "Temperature must be 0–2, or blank for provider default"
         );
         ensure!(
-            (1..=8192).contains(&self.max_tokens),
-            "Output token limit must be 1–8192 for this demo"
+            (1..=32768).contains(&self.max_tokens),
+            "Output token limit must be 1–32768"
         );
         ensure!(
             self.reasoning_effort
@@ -244,9 +249,9 @@ impl ActorSettings {
             "No active endpoint supports this combination of JSON output, temperature, reasoning and output token limit. Try provider defaults or a smaller token limit."
         );
         let endpoint = compatible.into_iter().find(|e| {
-                e["pricing"]["prompt"].as_str().and_then(|p|p.parse::<f64>().ok()).is_some_and(|p|p <= 0.000002)
-                && e["pricing"]["completion"].as_str().and_then(|p|p.parse::<f64>().ok()).is_some_and(|p|p <= 0.000008)
-        }).ok_or_else(||anyhow::anyhow!("Settings are supported, but no compatible endpoint has a verified price within the demo cap ($2 input / $8 output per million tokens). Changing reasoning effort will not bypass this cap. Choose a cheaper model."))?;
+                e["pricing"]["prompt"].as_str().and_then(|p|p.parse::<f64>().ok()).is_some_and(|p|p <= INPUT_USD_PER_MILLION / 1_000_000.0)
+                && e["pricing"]["completion"].as_str().and_then(|p|p.parse::<f64>().ok()).is_some_and(|p|p <= OUTPUT_USD_PER_MILLION / 1_000_000.0)
+        }).ok_or_else(||anyhow::anyhow!("Settings are supported, but no compatible endpoint has a verified price within the model cap ($4 input / $20 output per million tokens). Changing reasoning effort will not bypass this cap. Choose a cheaper model."))?;
         self.endpoint = endpoint["tag"].as_str().unwrap().into();
         Ok(())
     }
@@ -680,13 +685,13 @@ mod tests {
         let catalog = json!({"data":{"endpoints":[endpoint]}});
         settings.resolve(&catalog)?;
         let mut expensive = catalog.clone();
-        expensive["data"]["endpoints"][0]["pricing"]["completion"] = json!("0.000015");
+        expensive["data"]["endpoints"][0]["pricing"]["completion"] = json!("0.000025");
         assert!(
             settings
                 .resolve(&expensive)
                 .unwrap_err()
                 .to_string()
-                .contains("demo cap")
+                .contains("model cap")
         );
         let mut request =
             json!({"temperature":0.7,"max_tokens":1024,"provider":{"only":["generator-provider"]}});

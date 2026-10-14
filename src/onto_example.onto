@@ -1,0 +1,12 @@
+# Syntax illustration. Operator comes from the immutable foundation.
+object Ticket
+  name: string @required
+  status: queued | closed @final
+  createdAt: timestamp @default(now)
+
+story TicketWork
+  Operator creates Ticket
+    sets Ticket.status to "queued"
+  Operator closes Ticket
+    requires Ticket.status is "queued"
+    sets Ticket.status to "closed"

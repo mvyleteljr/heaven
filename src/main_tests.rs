@@ -90,7 +90,7 @@ async fn long_trajectory_compacts_constructs_recalls_and_reopens() -> Result<()>
             };
             let output = if output.get("kind").is_some() {
                 assert_eq!(request["response_format"]["json_schema"]["strict"],true);
-                json!({"kind":output["kind"],"inputs_json":output["inputs"].to_string()})
+                typed_actor_output(&request, &output)
             } else { output };
             Json(json!({"usage":{"cost":0.001},"choices":[{"finish_reason":"stop","message":{"content":output.to_string()}}]}))
         }
@@ -188,6 +188,7 @@ async fn invalid_memory_stops_without_losing_history_and_is_charged() -> Result<
 fn structured_action_transport_is_strict_and_preserves_tool_inputs() -> Result<()> {
     let mut run = Run::new(Config::default())?;
     run.config.structured_actions = true;
+    run.world = experiments::bellwether::seed();
     let action = parse_actor_action(
         &run,
         r#"{"kind":"file.write","inputs_json":"{\"path\":\"a\",\"content\":\"hello\\nworld\"}"}"#,
@@ -202,6 +203,204 @@ fn structured_action_transport_is_strict_and_preserves_tool_inputs() -> Result<(
     }
     run.config.structured_actions = false;
     assert!(parse_actor_action(&run, r#"{"kind":"mail.list","inputs":{}}"#).is_ok());
+    Ok(())
+}
+
+// Build a mock reply from the actual outgoing schema, including nullable inputs.
+fn typed_actor_output(request: &Value, action: &Value) -> Value {
+    let branches =
+        request["response_format"]["json_schema"]["schema"]["properties"]["action"]["anyOf"]
+            .as_array()
+            .unwrap();
+    let branch = branches
+        .iter()
+        .find(|branch| branch["properties"]["kind"]["enum"][0] == action["kind"])
+        .unwrap();
+    let mut inputs = action["inputs"].as_object().unwrap().clone();
+    for key in branch["properties"]["inputs"]["properties"]
+        .as_object()
+        .unwrap()
+        .keys()
+    {
+        inputs.entry(key.clone()).or_insert(Value::Null);
+    }
+    json!({"action":{"kind":action["kind"],"inputs":inputs}})
+}
+
+#[test]
+fn strict_actor_schema_requires_actual_tool_arguments() -> Result<()> {
+    let mut run = Run::new(Config::default())?;
+    run.world = experiments::bellwether::seed();
+    run.config.structured_actions = true;
+    run.config.memory = Some(memory::Policy::default());
+    memory::configure(&mut run)?;
+    let request = inference_request(&run, "actor", tools::SYSTEM, &json!({}))?;
+    let schema = &request["response_format"]["json_schema"]["schema"];
+    assert_eq!(
+        request["response_format"]["json_schema"]["name"],
+        "actor_action_v2"
+    );
+    assert_eq!(schema["type"], "object");
+    assert_eq!(schema["required"], json!(["action"]));
+    assert!(schema.get("anyOf").is_none());
+    let branches = schema["properties"]["action"]["anyOf"].as_array().unwrap();
+    assert_eq!(branches.len(), 12);
+    for branch in branches {
+        let inputs = &branch["properties"]["inputs"];
+        let fields = inputs["properties"].as_object().unwrap();
+        assert_eq!(inputs["required"].as_array().unwrap().len(), fields.len());
+        assert_eq!(inputs["additionalProperties"], false);
+        for field in fields.keys() {
+            assert!(
+                inputs["required"]
+                    .as_array()
+                    .unwrap()
+                    .contains(&json!(field))
+            );
+        }
+        if branch["properties"]["kind"]["enum"][0] == "finish" {
+            assert_eq!(inputs["required"], json!(["message"]));
+            assert_eq!(inputs["properties"]["message"]["type"], "string");
+            assert_eq!(inputs["properties"]["message"]["minLength"], 1);
+        }
+        if branch["properties"]["kind"]["enum"][0] == "http.request" {
+            for field in ["method", "url"] {
+                assert_eq!(inputs["properties"][field]["type"], "string");
+                assert!(inputs["properties"][field].get("anyOf").is_none());
+            }
+            assert_eq!(inputs["properties"]["headers"]["anyOf"][0]["type"], "array");
+            assert_eq!(
+                inputs["properties"]["headers"]["anyOf"][0]["items"]["additionalProperties"],
+                false
+            );
+        }
+    }
+    for bad in [
+        json!({"action":{"kind":"finish","inputs":{}}}),
+        json!({"action":{"kind":"finish","inputs":{"message":null}}}),
+        json!({"action":{"kind":"finish","inputs":{"message":" "}}}),
+        json!({"action":{"kind":"http.request","inputs":{}}}),
+        json!({"action":{"kind":"http.request","inputs":{"method":null,"url":null,"headers":null,"body":null}}}),
+        json!({"action":{"kind":"finish","inputs":{"message":"Done","extra":null}}}),
+        json!({"action":{"kind":"unknown","inputs":{}}}),
+    ] {
+        assert!(
+            parse_actor_action(&run, &bad.to_string()).is_err(),
+            "accepted {bad}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn typed_actor_transport_preserves_all_tools_and_nullable_optionals() -> Result<()> {
+    let mut run = Run::new(Config::default())?;
+    run.world = experiments::bellwether::seed();
+    run.config.structured_actions = true;
+    run.config.memory = Some(memory::Policy::default());
+    memory::configure(&mut run)?;
+    let request = inference_request(&run, "actor", tools::SYSTEM, &json!({}))?;
+    for (kind, inputs) in [
+        ("search", json!({"query":"Harbor"})),
+        (
+            "http.request",
+            json!({"method":"GET","url":"https://institutions.local/facts"}),
+        ),
+        ("shell.exec", json!({"command":"pwd"})),
+        ("file.read", json!({"path":"a"})),
+        ("file.write", json!({"path":"a","content":"hello\nworld"})),
+        (
+            "mail.send",
+            json!({"to":"a@example.test","subject":"Update","body":"Confirmed"}),
+        ),
+        ("mail.list", json!({})),
+        ("mail.read", json!({"message_id":"m1"})),
+        ("wait", json!({"seconds":0})),
+        ("finish", json!({"message":"The task is complete."})),
+        ("history.read", json!({"index":0})),
+        ("history.search", json!({"query":"Harbor"})),
+        ("file.read", json!({"path":"a","offset":4,"limit":32})),
+        ("mail.list", json!({"cursor":"next"})),
+        (
+            "mail.send",
+            json!({"to":"a@example.test","subject":"Update","body":"Confirmed","reply_to":"m1"}),
+        ),
+        ("history.read", json!({"index":0,"offset":1,"limit":256})),
+        ("history.search", json!({"query":"Harbor","cursor":4})),
+    ] {
+        let output = typed_actor_output(&request, &json!({"kind":kind,"inputs":inputs}));
+        let action = parse_actor_action(&run, &output.to_string())?;
+        assert_eq!(action.kind, kind);
+        assert_eq!(action.inputs, Some(inputs));
+        tools::validate_action(&action)?;
+    }
+    let http = json!({"action":{"kind":"http.request","inputs":{"method":"POST","url":"https://institutions.local/commands","body":"{\"story\":\"example\"}","headers":[{"name":"Content-Type","value":"application/json"}]}}});
+    let action = parse_actor_action(&run, &http.to_string())?;
+    assert_eq!(
+        action.inputs.as_ref().unwrap()["headers"],
+        json!({"Content-Type":"application/json"})
+    );
+    assert_eq!(
+        action.inputs.as_ref().unwrap()["body"],
+        "{\"story\":\"example\"}"
+    );
+    let mut duplicate = http;
+    duplicate["action"]["inputs"]["headers"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"name":"content-type","value":"text/plain"}));
+    assert!(parse_actor_action(&run, &duplicate.to_string()).is_err());
+    Ok(())
+}
+
+#[tokio::test]
+async fn typed_finish_completes_and_invalid_provider_arguments_cannot_consume_actions() -> Result<()>
+{
+    for (valid, output) in [
+        (
+            true,
+            json!({"action":{"kind":"finish","inputs":{"message":"The confirmed result is recorded."}}}),
+        ),
+        (false, json!({"action":{"kind":"finish","inputs":{}}})),
+        (false, json!({"action":{"kind":"http.request","inputs":{}}})),
+        (false, json!({"kind":"finish","inputs_json":"{}"})),
+        (false, json!({"kind":"http.request","inputs_json":"{}"})),
+    ] {
+        let (mut app, mut run) = app(Config {
+            demo: false,
+            structured_actions: true,
+            actor_settings: Some(frontier::ActorSettings {
+                provider: "openrouter".into(),
+                temperature: None,
+                max_tokens: 4096,
+                reasoning_effort: None,
+                endpoint: "mock".into(),
+            }),
+            ..Config::default()
+        })?;
+        run.world = experiments::bellwether::seed();
+        app.store
+            .lock()
+            .unwrap()
+            .commit(&mut run, "seed", "tools", json!({}))?;
+        let _mock = provider(&mut app, StatusCode::OK, json!({"usage":{"cost":0.001},"choices":[{"finish_reason":"stop","message":{"content":output.to_string()}}]}).to_string()).await?;
+        let result = step(&app, &run.id).await;
+        assert_eq!(result.is_ok(), valid);
+        let store = app.store.lock().unwrap();
+        let saved = store.load(&run.id)?;
+        assert_eq!(saved.calls, 1);
+        assert_eq!(saved.charged, 0.001);
+        assert_eq!(saved.actions, u32::from(valid));
+        assert_eq!(saved.world.finished, valid);
+        assert_eq!(
+            store
+                .events(&run.id)?
+                .iter()
+                .filter(|event| event.kind == "actor_rejected")
+                .count(),
+            usize::from(!valid)
+        );
+    }
     Ok(())
 }
 
@@ -594,5 +793,242 @@ async fn pause_remains_responsive_during_shell_and_survives_action_commit() -> R
             .read("result", 0, 100)?["content"],
         "saved\n"
     );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "Requires optional Onto bundle; scripts/dev check-jit"]
+async fn jit_actor_director_generator_execution_records_one_publication_and_reuses_it() -> Result<()>
+{
+    let (mut app, mut run) = app(Config {
+        demo: false,
+        call_limit: 50,
+        dollar_limit: 2.0,
+        ..Config::default()
+    })?;
+    let spec: Value = serde_json::from_str(include_str!("../examples/jit/live-proof.json"))?;
+    let mut institution = frontier::ontology::State::initialize(serde_json::from_value(
+        spec["institution"].clone(),
+    )?)?;
+    frontier::institutions::enable(
+        &mut institution,
+        serde_json::from_value(spec["generation"].clone())?,
+    )?;
+    run.world.tools = Some(tools::State::empty());
+    run.world.ontology = Some(institution);
+    run.world.goal = "PRIVATE-ACTOR-GOAL-CANARY".into();
+    run.experiment = Some(experiments::Experiment::Institutions);
+    app.store
+        .lock()
+        .unwrap()
+        .commit(&mut run, "seed", "JIT transport test", json!({}))?;
+    let actions: Vec<Value> = spec["steps"].as_array().unwrap()[..11]
+        .iter()
+        .map(|s| s["action"].clone())
+        .collect();
+    let count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let generated = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let (c, g) = (count.clone(), generated.clone());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    app.inference_url = format!("http://{}/completion", listener.local_addr()?);
+    let router=Router::new().route("/completion",post(move |Json(request):Json<Value>|{
+        let (c,g,actions)=(c.clone(),g.clone(),actions.clone());
+        async move {
+            let input:Value=serde_json::from_str(request["messages"][1]["content"].as_str().unwrap()).unwrap();
+            let output=if request["messages"][0]["content"]==frontier::institutions::GENERATOR {
+                g.fetch_add(1,Ordering::SeqCst);
+                assert!(!input.to_string().contains("PRIVATE-ACTOR-GOAL-CANARY"));
+                assert_eq!(request["response_format"]["json_schema"]["strict"],true);
+                json!({"source":include_str!("../examples/jit/test-capability.onto"),"error":null})
+            } else { actions[c.fetch_add(1,Ordering::SeqCst)].clone() };
+            Json(json!({"usage":{"cost":0.0001},"choices":[{"finish_reason":"stop","message":{"content":output.to_string()}}]}))
+        }
+    }));
+    let _mock = Mock(tokio::spawn(async move {
+        axum::serve(listener, router).await.unwrap();
+    }));
+    for _ in 0..11 {
+        step(&app, &run.id).await?;
+    }
+    let store = app.store.lock().unwrap();
+    let saved = store.load(&run.id)?;
+    let events = store.events(&run.id)?;
+    assert_eq!(generated.load(Ordering::SeqCst), 1);
+    assert_eq!(saved.calls, 12);
+    assert_eq!(saved.expansions, 1);
+    for (n, expected) in [(3, false), (4, true), (5, true), (7, true), (9, false)] {
+        let body: Value = serde_json::from_str(
+            saved.world.transcript[n]["result"]["body"]
+                .as_str()
+                .unwrap(),
+        )?;
+        assert_eq!(body["committed"], expected);
+    }
+    assert_eq!(
+        saved.world.transcript[1]["result"]["body"],
+        saved.world.transcript[10]["result"]["body"]
+    );
+    let published: Vec<_> = events.iter().filter(|e| e.kind == "published").collect();
+    assert_eq!(published.len(), 1);
+    assert!(published[0].evidence["validation_ms"].as_u64().is_some());
+    let audit = frontier::audit::report(&saved, &events);
+    assert_eq!(audit["integrity"]["unresolved_action_attempts"], 0);
+    assert_eq!(audit["integrity"]["events_contiguous"], true);
+    Ok(())
+}
+
+#[tokio::test]
+async fn unresolved_provider_endpoint_fails_before_reserving_or_sending() -> Result<()> {
+    let (app, run) = app(Config {
+        demo: false,
+        generator_settings: Some(frontier::ActorSettings {
+            provider: "openrouter".into(),
+            temperature: None,
+            max_tokens: 4096,
+            reasoning_effort: None,
+            endpoint: String::new(),
+        }),
+        ..Config::default()
+    })?;
+    let error = infer(&app, &run.id, "world", "system", json!({}))
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("endpoint is unresolved"));
+    let store = app.store.lock().unwrap();
+    let saved = store.load(&run.id)?;
+    assert_eq!(saved.calls, 0);
+    assert_eq!(saved.reserved, 0.0);
+    let events = store.events(&run.id)?;
+    assert!(!events.iter().any(|e| e.kind == "inference"));
+    assert_eq!(events.last().unwrap().evidence["phase"], "preflight");
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "Requires optional Onto bundle; scripts/dev check-jit"]
+async fn jit_validation_repair_is_bounded_atomic_and_never_retries_provider_failures() -> Result<()>
+{
+    for mode in ["repair", "exhaust", "provider", "disabled"] {
+        let (mut app, mut run) = app(Config {
+            demo: false,
+            call_limit: 10,
+            dollar_limit: 2.0,
+            ..Config::default()
+        })?;
+        let spec: Value = serde_json::from_str(include_str!("../examples/jit/live-proof.json"))?;
+        let mut institution = frontier::ontology::State::initialize(serde_json::from_value(
+            spec["institution"].clone(),
+        )?)?;
+        let mut policy: frontier::institutions::Policy =
+            serde_json::from_value(spec["generation"].clone())?;
+        policy.repair_attempts = if mode == "disabled" { 0 } else { 1 };
+        frontier::institutions::enable(&mut institution, policy)?;
+        run.world.tools = Some(tools::State::empty());
+        run.world.ontology = Some(institution);
+        run.experiment = Some(experiments::Experiment::Institutions);
+        app.store
+            .lock()
+            .unwrap()
+            .commit(&mut run, "seed", "Repair test", json!({}))?;
+        let initial_world = serde_json::to_value(&run.world)?;
+        let observed = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let requests = observed.clone();
+        let test_store = app.store.clone();
+        let id = run.id.clone();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+        app.inference_url = format!("http://{}/completion", listener.local_addr()?);
+        let router = Router::new().route("/completion", post(move |Json(request): Json<Value>| {
+            let (requests, test_store, id) = (requests.clone(), test_store.clone(), id.clone());
+            async move {
+                assert!(test_store.lock().unwrap().load(&id).unwrap().world.ontology.unwrap().modules.is_empty());
+                let input: Value = serde_json::from_str(request["messages"][1]["content"].as_str().unwrap()).unwrap();
+                let mut requests = requests.lock().unwrap();
+                let n = requests.len();
+                if n > 0 {
+                    assert_eq!(input["request_id"], requests[0]["request_id"]);
+                    assert_eq!(input["basis"], requests[0]["basis"]);
+                    assert!(input["context"]["supporting"]["validation_error"].as_str().is_some_and(|s| !s.is_empty()));
+                    assert!(input["context"]["supporting"]["previous_response"].as_str().unwrap().contains("initially"));
+                }
+                requests.push(input);
+                if mode == "provider" { return (StatusCode::PAYMENT_REQUIRED, Json(json!({"error":{"message":"test provider failure"}}))); }
+                let source = if mode == "repair" && n == 1 { include_str!("../examples/jit/test-capability.onto") } else { "object Policy\n  limit: int @required initially 10\n" };
+                (StatusCode::OK, Json(json!({"usage":{"cost":0.0001},"choices":[{"finish_reason":"stop","message":{"content":json!({"source":source,"error":null}).to_string()}}]})))
+            }
+        }));
+        let _mock = Mock(tokio::spawn(async move {
+            axum::serve(listener, router).await.unwrap();
+        }));
+        let action: Action = serde_json::from_value(spec["steps"][0]["action"].clone())?;
+        let result = construct(&app, &run.id, &action).await;
+        let store = app.store.lock().unwrap();
+        let saved = store.load(&run.id)?;
+        let events = store.events(&run.id)?;
+        assert_eq!(
+            observed.lock().unwrap().len(),
+            if ["provider", "disabled"].contains(&mode) {
+                1
+            } else {
+                2
+            }
+        );
+        assert_eq!(saved.expansions, 1);
+        if mode == "repair" {
+            result?;
+            assert_eq!(saved.world.ontology.unwrap().modules.len(), 1);
+            let publications: Vec<_> = events.iter().filter(|e| e.kind == "published").collect();
+            assert_eq!(publications.len(), 1);
+            assert_eq!(publications[0].evidence["generation_attempts"], 2);
+        } else {
+            assert!(result.is_err());
+            assert_eq!(serde_json::to_value(saved.world)?, initial_world);
+            assert!(!events.iter().any(|e| e.kind == "published"));
+        }
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn larger_reasoning_output_still_requires_full_cost_reservation() -> Result<()> {
+    let config = Config {
+        demo: false,
+        dollar_limit: 0.2,
+        generator_settings: Some(frontier::ActorSettings {
+            provider: "openrouter".into(),
+            temperature: None,
+            max_tokens: 32768,
+            reasoning_effort: Some("medium".into()),
+            endpoint: "mock".into(),
+        }),
+        ..Config::default()
+    };
+    config.validate()?;
+    let (app, run) = app(config)?;
+    let error = infer(&app, &run.id, "world", "system", json!({}))
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("maximum-cost reservation"));
+    let saved = app.store.lock().unwrap().load(&run.id)?;
+    assert_eq!(saved.calls, 0);
+    assert_eq!(saved.reserved, 0.0);
+    Ok(())
+}
+
+#[test]
+fn memory_retains_reasoning_output_allowance() -> Result<()> {
+    let (_, run) = app(Config {
+        actor_settings: Some(frontier::ActorSettings {
+            provider: "openrouter".into(),
+            temperature: None,
+            max_tokens: 32768,
+            reasoning_effort: Some("high".into()),
+            endpoint: "mock".into(),
+        }),
+        ..Config::default()
+    })?;
+    let request = inference_request(&run, "memory", memory::SYSTEM, &json!({}))?;
+    assert_eq!(request["max_tokens"], 32768);
+    assert_eq!(request["reasoning"]["effort"], "high");
+    assert_eq!(request["response_format"], memory::response_format());
     Ok(())
 }

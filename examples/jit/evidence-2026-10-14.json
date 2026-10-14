@@ -1,0 +1,738 @@
+{
+  "version": 1,
+  "date": "2026-10-14",
+  "claim": "Live generator passed 34 scripted behavior checks across three executable modules; cold-process persistence/fork verification and separate 64-module deterministic growth checks passed. Bounded evidence, not universal reliability.",
+  "scope": {
+    "generation": "New Onto source in previously unspecified modules, compiled by trusted interpreter",
+    "restructuring": "Generated Stories change local policy state; not source/schema migration",
+    "isolation": "Shared immutable foundation, isolated mutable modules; no cross-module transactions",
+    "growth": "64 deterministic fixture modules; not infinite-world performance",
+    "live_protocol": "Researcher-scripted actions; live generator; no autonomous actor claim"
+  },
+  "free_checks": {
+    "jit_adversarial_restart_fork": true,
+    "jit_actor_generator_pipeline": true,
+    "onto_ledger_regression": true,
+    "core_rust_tests_passed": 48,
+    "web_tests_passed": 6,
+    "format": true,
+    "clippy_warnings_denied": true,
+    "linux_sandbox_doctor": true,
+    "bounded_validation_repair": true,
+    "optional_tests_passed": 6,
+    "verification_logs": [
+      "data/audits/jit-core-repair-2026-10-14.log",
+      "data/audits/jit-repair-2026-10-14.log",
+      "data/audits/jit-onto-2026-10-14.log",
+      "data/audits/jit-live-2026-10-14-e-cold.log"
+    ]
+  },
+  "growth": {
+    "kind": "deterministic_fixture_not_live_generation",
+    "measurements": [
+      {
+        "context_bytes": 954,
+        "execute_ms": 71,
+        "modules": 1,
+        "publish_ms": 74,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 75,
+        "modules": 2,
+        "publish_ms": 89,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 77,
+        "modules": 3,
+        "publish_ms": 83,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 77,
+        "modules": 4,
+        "publish_ms": 77,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 72,
+        "modules": 5,
+        "publish_ms": 85,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 85,
+        "modules": 6,
+        "publish_ms": 78,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 70,
+        "modules": 7,
+        "publish_ms": 76,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 72,
+        "modules": 8,
+        "publish_ms": 86,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 84,
+        "modules": 9,
+        "publish_ms": 88,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 70,
+        "modules": 10,
+        "publish_ms": 76,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 70,
+        "modules": 11,
+        "publish_ms": 77,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 71,
+        "modules": 12,
+        "publish_ms": 86,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 71,
+        "modules": 13,
+        "publish_ms": 87,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 70,
+        "modules": 14,
+        "publish_ms": 76,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 70,
+        "modules": 15,
+        "publish_ms": 76,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 82,
+        "modules": 16,
+        "publish_ms": 89,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 71,
+        "modules": 17,
+        "publish_ms": 88,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 72,
+        "modules": 18,
+        "publish_ms": 93,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 74,
+        "modules": 19,
+        "publish_ms": 78,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 70,
+        "modules": 20,
+        "publish_ms": 78,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 83,
+        "modules": 21,
+        "publish_ms": 79,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 71,
+        "modules": 22,
+        "publish_ms": 91,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 73,
+        "modules": 23,
+        "publish_ms": 92,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 84,
+        "modules": 24,
+        "publish_ms": 90,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 84,
+        "modules": 25,
+        "publish_ms": 93,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 83,
+        "modules": 26,
+        "publish_ms": 92,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 70,
+        "modules": 27,
+        "publish_ms": 81,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 70,
+        "modules": 28,
+        "publish_ms": 94,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 70,
+        "modules": 29,
+        "publish_ms": 93,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 84,
+        "modules": 30,
+        "publish_ms": 81,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 82,
+        "modules": 31,
+        "publish_ms": 83,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 70,
+        "modules": 32,
+        "publish_ms": 83,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 71,
+        "modules": 33,
+        "publish_ms": 93,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 84,
+        "modules": 34,
+        "publish_ms": 95,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 84,
+        "modules": 35,
+        "publish_ms": 86,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 71,
+        "modules": 36,
+        "publish_ms": 95,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 71,
+        "modules": 37,
+        "publish_ms": 97,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 74,
+        "modules": 38,
+        "publish_ms": 84,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 70,
+        "modules": 39,
+        "publish_ms": 96,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 83,
+        "modules": 40,
+        "publish_ms": 87,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 70,
+        "modules": 41,
+        "publish_ms": 85,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 71,
+        "modules": 42,
+        "publish_ms": 98,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 82,
+        "modules": 43,
+        "publish_ms": 99,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 71,
+        "modules": 44,
+        "publish_ms": 87,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 73,
+        "modules": 45,
+        "publish_ms": 98,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 73,
+        "modules": 46,
+        "publish_ms": 99,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 70,
+        "modules": 47,
+        "publish_ms": 87,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 70,
+        "modules": 48,
+        "publish_ms": 88,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 71,
+        "modules": 49,
+        "publish_ms": 89,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 70,
+        "modules": 50,
+        "publish_ms": 89,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 71,
+        "modules": 51,
+        "publish_ms": 88,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 85,
+        "modules": 52,
+        "publish_ms": 100,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 71,
+        "modules": 53,
+        "publish_ms": 90,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 71,
+        "modules": 54,
+        "publish_ms": 89,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 83,
+        "modules": 55,
+        "publish_ms": 102,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 86,
+        "modules": 56,
+        "publish_ms": 103,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 70,
+        "modules": 57,
+        "publish_ms": 92,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 73,
+        "modules": 58,
+        "publish_ms": 102,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 71,
+        "modules": 59,
+        "publish_ms": 104,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 84,
+        "modules": 60,
+        "publish_ms": 92,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 71,
+        "modules": 61,
+        "publish_ms": 93,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 81,
+        "modules": 62,
+        "publish_ms": 104,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 82,
+        "modules": 63,
+        "publish_ms": 104,
+        "revisit_ms": 0
+      },
+      {
+        "context_bytes": 954,
+        "execute_ms": 83,
+        "modules": 64,
+        "publish_ms": 106,
+        "revisit_ms": 0
+      }
+    ]
+  },
+  "growth_summary": {
+    "publish_ms": {
+      "min": 74,
+      "max": 106,
+      "p95": 103
+    },
+    "execute_ms": {
+      "min": 70,
+      "max": 86,
+      "p95": 84
+    },
+    "revisit_ms": {
+      "min": 0,
+      "max": 0,
+      "p95": 0
+    },
+    "context_bytes": {
+      "min": 954,
+      "max": 954,
+      "p95": 954
+    }
+  },
+  "live_attempts": [
+    {
+      "file": "data/audits/jit-live-2026-10-14.json",
+      "passed": false,
+      "run_id": "ff6f7b1d-2b7d-4db2-a784-cf62c179bbdc",
+      "source_sha256": "ac9ae849045fe165b55fc19b7f83f70a8404ae4b72e80590304562e009687f77",
+      "spending": {
+        "calls_including_inherited": 1,
+        "calls_recorded_on_this_branch": {
+          "world": 1
+        },
+        "charged_usd": 0.0,
+        "limit_usd": 0.5,
+        "uncertain_reserved_usd": 0.1
+      },
+      "integrity": {
+        "attempted_actions": 1,
+        "completed_observations": 1,
+        "events_contiguous": true,
+        "last_event_matches_run": true,
+        "memory_prefix_valid": null,
+        "unresolved_action_attempts": 0
+      },
+      "construction": {
+        "attempts_including_inherited": 1,
+        "published_on_this_branch": 0,
+        "rejected_on_this_branch": 1,
+        "timings": []
+      },
+      "failures": [
+        {
+          "http_status": 404,
+          "code": 404,
+          "limit_source": null,
+          "failed_routing_step": "Filter by Allowed Providers"
+        }
+      ]
+    },
+    {
+      "file": "data/audits/jit-live-2026-10-14-b.json",
+      "passed": false,
+      "run_id": "d7c2bce4-c951-4009-80d2-08ee1ea6f8e9",
+      "source_sha256": "b5aebb85ce1cdd0baade873865e9a329a8ae502709b64ebdbb8d5236e577dd4b",
+      "spending": {
+        "calls_including_inherited": 1,
+        "calls_recorded_on_this_branch": {
+          "world": 1
+        },
+        "charged_usd": 0.0,
+        "limit_usd": 0.5,
+        "uncertain_reserved_usd": 0.1
+      },
+      "integrity": {
+        "attempted_actions": 1,
+        "completed_observations": 1,
+        "events_contiguous": true,
+        "last_event_matches_run": true,
+        "memory_prefix_valid": null,
+        "unresolved_action_attempts": 0
+      },
+      "construction": {
+        "attempts_including_inherited": 1,
+        "published_on_this_branch": 0,
+        "rejected_on_this_branch": 1,
+        "timings": []
+      },
+      "failures": [
+        {
+          "http_status": 402,
+          "code": 402,
+          "limit_source": "openrouter_credits",
+          "failed_routing_step": null
+        }
+      ]
+    },
+    {
+      "file": "data/audits/jit-live-2026-10-14-c.json",
+      "passed": false,
+      "error": "missing field `interface` at line 1 column 1304",
+      "run_id": "1660691e-3af8-4430-8349-2e01dd0e62b1",
+      "source_sha256": "d5fdc89dbb3ff0b1d1debeb806c357a0b6651b108325b052f6bdb60678c2fd8d",
+      "checks_passed": 0,
+      "spending": {
+        "calls_including_inherited": 1,
+        "calls_recorded_on_this_branch": {
+          "world": 1
+        },
+        "charged_usd": 0.0010808,
+        "limit_usd": 0.5,
+        "uncertain_reserved_usd": 0.0
+      },
+      "integrity": {
+        "attempted_actions": 1,
+        "completed_observations": 1,
+        "events_contiguous": true,
+        "last_event_matches_run": true,
+        "memory_prefix_valid": null,
+        "unresolved_action_attempts": 0
+      },
+      "construction": {
+        "attempts_including_inherited": 1,
+        "published_on_this_branch": 0,
+        "rejected_on_this_branch": 1,
+        "timings": []
+      }
+    },
+    {
+      "file": "data/audits/jit-live-2026-10-14-d.json",
+      "passed": false,
+      "error": "Onto refused: \"generated.onto:3: cannot read \\\"initially 10\\\" after the attributes\"",
+      "run_id": "0644b14a-d410-47d6-bbd1-e531db10be7f",
+      "source_sha256": "1123f00dc9858ce78e32e9891edb38ee29c50720d03eb3935cf517507c7b2cde",
+      "checks_passed": 22,
+      "spending": {
+        "calls_including_inherited": 3,
+        "calls_recorded_on_this_branch": {
+          "world": 3
+        },
+        "charged_usd": 0.002474,
+        "limit_usd": 0.5,
+        "uncertain_reserved_usd": 0.0
+      },
+      "integrity": {
+        "attempted_actions": 23,
+        "completed_observations": 23,
+        "events_contiguous": true,
+        "last_event_matches_run": true,
+        "memory_prefix_valid": null,
+        "unresolved_action_attempts": 0
+      },
+      "construction": {
+        "attempts_including_inherited": 3,
+        "published_on_this_branch": 2,
+        "rejected_on_this_branch": 1,
+        "timings": [
+          {
+            "latency_ms": 2102,
+            "request_bytes": 5850,
+            "seq": 7,
+            "validation_ms": 107
+          },
+          {
+            "latency_ms": 2391,
+            "request_bytes": 5862,
+            "seq": 55,
+            "validation_ms": 113
+          }
+        ]
+      }
+    },
+    {
+      "file": "data/audits/jit-live-2026-10-14-e.json",
+      "passed": true,
+      "error": null,
+      "run_id": "19c945b6-a6da-419f-ad99-a0535ca9db79",
+      "source_sha256": "343785adced173abba14e2ae645b34364399e39743f324f334bdffa35ee67ca7",
+      "checks_passed": 34,
+      "spending": {
+        "calls_including_inherited": 3,
+        "calls_recorded_on_this_branch": {
+          "world": 3
+        },
+        "charged_usd": 0.0025504,
+        "limit_usd": 0.5,
+        "uncertain_reserved_usd": 0.0
+      },
+      "integrity": {
+        "attempted_actions": 34,
+        "completed_observations": 34,
+        "events_contiguous": true,
+        "last_event_matches_run": true,
+        "memory_prefix_valid": null,
+        "unresolved_action_attempts": 0
+      },
+      "construction": {
+        "attempts_including_inherited": 3,
+        "published_on_this_branch": 3,
+        "rejected_on_this_branch": 0,
+        "timings": [
+          {
+            "latency_ms": 3194,
+            "request_bytes": 5870,
+            "seq": 7,
+            "validation_ms": 111
+          },
+          {
+            "latency_ms": 2928,
+            "request_bytes": 5882,
+            "seq": 55,
+            "validation_ms": 110
+          },
+          {
+            "latency_ms": 2870,
+            "request_bytes": 5878,
+            "seq": 103,
+            "validation_ms": 108
+          }
+        ]
+      }
+    }
+  ],
+  "authorized_total_usd": 2,
+  "cumulative_charged_plus_uncertain_reserved_usd": 0.698976725,
+  "live_spec_sha256": "0abecce522ad5d46949501b620b4f4296e2e3f007efeff6405d1674f2cb20ceb",
+  "runtime_manifest": {
+    "onto_revision": "454af8cb5bf9d6bef725df6a3294a5e54be37894",
+    "bridge_sha256": "40b7d8ace8944f7c67593ec4bd17b9d0cbd8d4dbb8d4ced620205a6df7219765",
+    "node": "26.5.1",
+    "esbuild": "0.27.7",
+    "toolchain_lock_sha256": "d172b9165cb6e61ad1da3be1efc0f21fb75e21b57512fdc0c480ffb30a75f3ab"
+  },
+  "provider_diagnosis": "A privately replaced key works. Trials C/D exposed proposal-envelope and generated-syntax failures; frozen trial E passed without repairs.",
+  "successful_live_report": {
+    "file": "examples/jit/live-result-2026-10-14.json",
+    "sha256": "206b6f60c9568b7270eb0e278fb0c375a7a65c06f93b6347b1182212c440a95f",
+    "repair_attempts_allowed_per_module": 1,
+    "repair_attempts_used": 0,
+    "note": "Source-only strict response schema; host supplies proposal metadata. Failed proposals are retained in earlier trial reports."
+  },
+  "cold_verification": {
+    "checkpoint_hash": "fb867d1248127a951ef8e9fb1edb43dda7fca41523988a4cd8e284c06240ec30",
+    "cold_reopen": true,
+    "fork_execution": true,
+    "inference_calls": 0,
+    "modules": [
+      "claims-review",
+      "dispatch-routing",
+      "quality-control"
+    ],
+    "parent_unchanged": true,
+    "receipt_replay": true,
+    "run_id": "19c945b6-a6da-419f-ad99-a0535ca9db79"
+  }
+}

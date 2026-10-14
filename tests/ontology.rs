@@ -300,3 +300,184 @@ fn onto_is_the_only_ledger_and_commands_survive_restart_without_duplicate_effect
     assert!(state.request("GET", "/facts", None, 40).is_err());
     Ok(())
 }
+
+#[test]
+fn module_guidance_and_errors_use_the_module_endpoint_and_discovery_is_opt_in() -> Result<()> {
+    // Legacy states omit generation/protection fields; docs need no interpreter.
+    let mut state: ontology::State = serde_json::from_value(json!({
+        "definition":{"source":{},"actor":"Clerk:Ada","epoch":"2026-01-01T00:00:00Z","public_facts":true},
+        "runtime_sha256":"0".repeat(64),
+        "snapshot":{"instances":[{"id":"Account:Operating","type":"Account"},{"id":"Account:Reserve","type":"Account"}]},
+        "stories":[{"story":STORY,"creates":true}],"receipts":{}
+    }))?;
+    assert!(
+        state
+            .request("GET", "/", None, 0)?
+            .get("module_discovery")
+            .is_none()
+    );
+    state.modules.insert("treasury".into(), state.clone());
+    let root = "https://institutions.local/modules/treasury";
+    for path in ["/modules/treasury", "/modules/treasury/model"] {
+        let document = state.request("GET", path, None, 0)?;
+        assert!(document.get("module_discovery").is_none());
+        assert_eq!(
+            document["command_guide"]["endpoint"],
+            format!("{root}/commands")
+        );
+        assert_eq!(
+            document["command_guide"]["example_action"]["inputs"]["url"],
+            format!("{root}/commands")
+        );
+        let instructions = document["command_guide"]["instructions"].to_string();
+        assert!(instructions.contains(&format!("{root}/model")));
+        assert!(instructions.contains(&format!("{root}/facts")));
+        assert!(!instructions.contains("GET https://institutions.local/model"));
+    }
+    for (path, body, expected) in [
+        (
+            "/modules/treasury/api/commands",
+            "{}",
+            format!("{root}/commands"),
+        ),
+        (
+            "/modules/treasury/commands",
+            "{}",
+            format!("{root}/commands"),
+        ),
+        (
+            "/modules/treasury/commands",
+            r#"{"command_id":"bad","story":"invented"}"#,
+            format!("{root}/model"),
+        ),
+    ] {
+        let error = state
+            .request("POST", path, Some(body), 0)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains(&expected), "{error}");
+    }
+    state.generation = Some(frontier::institutions::Policy {
+        brief: "private brief".into(),
+        max_modules: 2,
+        repair_attempts: 0,
+    });
+    let document = state.request("GET", "/", None, 0)?;
+    assert!(
+        document["module_discovery"]
+            .as_str()
+            .unwrap()
+            .contains("/modules/NAME")
+    );
+    assert!(document.get("command_guide").is_none());
+    assert!(document["urls"].get("commands").is_none());
+    assert!(!document.to_string().contains("private brief"));
+    assert!(
+        state
+            .request("POST", "/commands", Some("{}"), 0)
+            .unwrap_err()
+            .to_string()
+            .contains("read-only")
+    );
+    Ok(())
+}
+
+#[test]
+#[ignore = "Requires the pinned optional Onto bundle; scripts/dev check-onto runs this test"]
+fn saved_runtime_archives_preserve_execution_after_default_bundle_upgrade() -> Result<()> {
+    // Use an isolated child environment: Rust tests run concurrently and the
+    // real configured bundle/server must never be modified by this regression.
+    let directory = tempfile::tempdir()?;
+    let runtime = directory.path().join("onto-runtime.cjs");
+    std::fs::copy(std::env::var("FRONTIER_ONTO_RUNTIME")?, &runtime)?;
+    let output = std::process::Command::new(std::env::current_exe()?)
+        .args([
+            "--exact",
+            "saved_runtime_archive_child",
+            "--ignored",
+            "--nocapture",
+        ])
+        .env("FRONTIER_ONTO_RUNTIME", &runtime)
+        .env("FRONTIER_TEST_RUNTIME_ARCHIVE", directory.path())
+        .output()?;
+    assert!(
+        output.status.success(),
+        "child failed:\n{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    Ok(())
+}
+
+#[test]
+#[ignore = "Child process for saved_runtime_archives_preserve_execution_after_default_bundle_upgrade"]
+fn saved_runtime_archive_child() -> Result<()> {
+    let Ok(directory) = std::env::var("FRONTIER_TEST_RUNTIME_ARCHIVE") else {
+        return Ok(());
+    };
+    let directory = std::path::Path::new(&directory);
+    let runtime = directory.join("onto-runtime.cjs");
+    assert_eq!(
+        std::path::PathBuf::from(std::env::var("FRONTIER_ONTO_RUNTIME")?),
+        runtime
+    );
+    let definition = institutions::definition("accounts")?;
+    let state = ontology::State::initialize(definition.clone())?;
+    let old_hash = state.runtime_sha256.clone();
+    let mut run = Run::new(Config::default())?;
+    run.world.ontology = Some(state);
+    run.world.tools = Some(tools::State::empty());
+    let database = directory.join("saved.sqlite");
+    let mut store = Store::open(database.to_str().unwrap())?;
+    store.commit(&mut run, "seed", "institution", json!({}))?;
+    let checkpoint = run.checkpoint_hash();
+    drop(store);
+
+    let archives = directory.join("onto-runtimes");
+    std::fs::create_dir(&archives)?;
+    let archived = archives.join(format!("{old_hash}.cjs"));
+    let bytes = std::fs::read(&runtime)?;
+    std::fs::write(&archived, &bytes)?;
+    let mut next = bytes.clone();
+    next.extend_from_slice(b"\n// Distinct trusted runtime build for the upgrade regression.\n");
+    std::fs::write(&runtime, next)?;
+    let new_state = ontology::State::initialize(definition)?;
+    assert_ne!(new_state.runtime_sha256, old_hash);
+    let store = Store::open(database.to_str().unwrap())?;
+    let mut restored = store.load(&run.id)?;
+    assert_eq!(restored.checkpoint_hash(), checkpoint);
+    let state = restored.world.ontology.as_mut().unwrap();
+    state.check_runtime()?;
+    let command = transfer("after-upgrade", "after-upgrade", 2500, "Account:Operating").to_string();
+    assert_eq!(
+        state.request("POST", "/commands", Some(&command), 0)?["committed"],
+        true
+    );
+    assert_eq!(balances(state), vec![7500, 7500, 2500]);
+    assert_eq!(state.runtime_sha256, old_hash);
+    // The archive works independently of the default bundle's availability.
+    std::fs::remove_file(&runtime)?;
+    state.check_runtime()?;
+    state.request("GET", "/facts", None, 1)?;
+    std::fs::remove_file(&archived)?;
+    assert!(
+        state
+            .check_runtime()
+            .unwrap_err()
+            .to_string()
+            .contains("unavailable")
+    );
+    assert!(state.request("GET", "/facts", None, 1).is_err());
+    std::fs::write(&archived, b"corrupt archive")?;
+    assert!(
+        state
+            .check_runtime()
+            .unwrap_err()
+            .to_string()
+            .contains("hash mismatch")
+    );
+    assert!(state.request("GET", "/facts", None, 1).is_err());
+    std::fs::write(&archived, bytes)?;
+    state.check_runtime()?;
+    Ok(())
+}
