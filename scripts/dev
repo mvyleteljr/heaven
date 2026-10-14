@@ -12,6 +12,11 @@ case "${1:-up}" in
       cargo test --locked
       cargo clippy --locked --all-targets -- -D warnings
       node --check web/app.js
+      node --check web/run.js
+      node --check web/run-view.js
+      node --check web/run-carousel.js
+      node --check web/run-world.js
+      node --check web/run-structure.js
       node --test tests/*.test.mjs
       cargo run --locked -- doctor
     '
@@ -20,7 +25,7 @@ case "${1:-up}" in
   check-onto)
     docker compose run --rm --no-deps -e OPENROUTER_API_KEY= frontier sh -ec '
       node scripts/test-harbor-onto.mjs
-      cargo test --locked --test ontology --test harbor_onto --test institutions_http -- --include-ignored
+      cargo test --locked --test ontology --test harbor_onto --test institutions_http --test story_executor -- --include-ignored
     '
     ;;
   check-jit)

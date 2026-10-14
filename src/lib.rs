@@ -15,6 +15,7 @@ pub mod hosting;
 pub mod institutions;
 pub mod memory;
 pub mod ontology;
+pub mod story_executor;
 pub use experiments::flowers;
 pub mod tools;
 pub mod workspace;

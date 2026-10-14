@@ -88,6 +88,46 @@ fn assert_paused(run: &Value) {
 }
 
 #[tokio::test]
+#[ignore = "Requires the pinned optional Onto bundle"]
+async fn story_review_saves_its_restricted_interface_without_starting_inference() -> Result<()> {
+    let dir = tempfile::tempdir()?;
+    let runtime = std::env::var("FRONTIER_ONTO_RUNTIME")?;
+    let (_server, client, base) =
+        server(&dir.path().join("review.sqlite"), Some(Path::new(&runtime))).await?;
+    let seed = read(
+        &client,
+        format!("{base}/institution-seed?template=story-review"),
+    )
+    .await?;
+    assert_eq!(seed["runtime_available"], true);
+    let run: Value = post(&client, format!("{base}/institutions"), &json!({
+        "template":"story-review", "institution":seed["institution"],
+        "generation":seed["generation"], "config":config(seed["world"]["goal"].as_str().unwrap())
+    })).send().await?.error_for_status()?.json().await?;
+    assert_paused(&run);
+    assert_eq!(run["experiment"], "onto_review");
+    let names: Vec<_> = run["world"]["tools"]["definitions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        names,
+        vec!["onto.inspect", "onto.execute", "onto.expand", "finish"]
+    );
+    assert_eq!(run["world"]["ontology"]["generation"], seed["generation"]);
+    assert!(run["world"]["hosting"].is_null());
+    assert!(
+        run["config"]["actor_system_prompt"]
+            .as_str()
+            .unwrap()
+            .contains("institution")
+    );
+    Ok(())
+}
+
+#[tokio::test]
 #[ignore = "Requires the pinned optional Onto bundle and the Linux sandbox"]
 async fn institution_templates_validate_and_create_independent_paused_runs() -> Result<()> {
     let dir = tempfile::tempdir()?;
@@ -280,7 +320,7 @@ async fn institution_templates_validate_and_create_independent_paused_runs() -> 
 async fn missing_runtime_preserves_template_source_and_existing_seed_routes() -> Result<()> {
     let dir = tempfile::tempdir()?;
     let (_server, client, base) = server(&dir.path().join("missing-runtime.sqlite"), None).await?;
-    for template in ["accounts", "harbor", "generative"] {
+    for template in ["accounts", "harbor", "generative", "story-review"] {
         let seed = read(
             &client,
             format!("{base}/institution-seed?template={template}"),

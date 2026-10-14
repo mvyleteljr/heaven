@@ -209,6 +209,9 @@ pub fn call(kind: &str, inputs: Value) -> Action {
 
 pub use crate::experiments::flowers::request as florist_request;
 pub fn validate_action(action: &Action) -> Result<()> {
+    if action.kind.starts_with("onto.") {
+        return crate::story_executor::validate(action);
+    }
     let parsed = parse(action)?;
     if let Call::Http { url, .. } = parsed {
         let url = reqwest::Url::parse(&url)?;
@@ -294,7 +297,16 @@ pub fn advance_time(world: &mut World, seconds: u64) -> Result<()> {
 }
 pub fn apply(world: &mut World, action: &Action) -> Result<Value> {
     ensure!(!world.finished, "Run has finished");
+    if crate::story_executor::enabled(world) || action.kind.starts_with("onto.") {
+        ensure!(
+            crate::story_executor::allows(world, action),
+            "Tool is not enabled for this run"
+        );
+    }
     advance_action_time(world, action)?;
+    if action.kind.starts_with("onto.") {
+        return crate::story_executor::apply(world, action);
+    }
     if world.finished {
         return Ok(
             json!({"notice":"The 30-day operating period has ended. No further action was executed.","elapsed_seconds":crate::business::HORIZON}),

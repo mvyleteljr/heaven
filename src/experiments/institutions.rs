@@ -19,7 +19,7 @@ pub fn definition(template: &str) -> Result<ontology::Definition> {
             include_str!("../../examples/onto/harbor-works.onto"),
             super::harbor_onto::ACTOR,
         ),
-        "generative" => (
+        "generative" | "story-review" => (
             "foundation.onto",
             include_str!("../../examples/jit/foundation.onto"),
             "Operator:Ada",
@@ -58,10 +58,13 @@ pub fn world(definition: ontology::Definition, task: &str) -> Result<World> {
 pub fn preview(template: &str) -> Result<Value> {
     let definition = definition(template)?;
     let harbor = template == "harbor";
-    let generative = template == "generative";
+    let review = template == "story-review";
+    let generative = template == "generative" || review;
     let example: Value =
         serde_json::from_str(include_str!("../../examples/jit/institution-run.json"))?;
-    let task = if harbor {
+    let task = if review {
+        crate::story_executor::TASK
+    } else if harbor {
         super::harbor_onto::TASK
     } else if generative {
         example["config"]["actor_user_prompt"]
@@ -70,19 +73,25 @@ pub fn preview(template: &str) -> Result<Value> {
     } else {
         ACCOUNTS_TASK
     };
-    let system = if harbor {
+    let system = if review {
+        crate::story_executor::SYSTEM
+    } else if harbor {
         super::bellwether::SYSTEM
     } else {
         tools::SYSTEM
     };
-    let name = if harbor {
+    let name = if review {
+        "Onto · Story review"
+    } else if harbor {
         "Onto · Harbor Works"
     } else if generative {
         "Onto · Generated company"
     } else {
         "Onto · Accounts"
     };
-    let description = if harbor {
+    let description = if review {
+        "Review institutional rules through direct Ontolang Story execution. Inspect models and facts, request compiled model additions, and examine committed or refused transitions. Modules share an immutable foundation and have separate mutable state."
+    } else if harbor {
         "A separate public-facts Harbor Works experiment. Ontolang governs organizations, agreements, balances and service evidence; Frontier runs the clock, counterparties and isolated handlers."
     } else if generative {
         "An immutable company foundation with executable Ontolang capabilities generated as the agent discovers them. Each module has its own persistent facts and Stories. Generation uses the run's call and dollar limits."
@@ -99,6 +108,9 @@ pub fn preview(template: &str) -> Result<Value> {
                     serde_json::from_value(example["generation"].clone())?,
                 )?;
             }
+            if review {
+                crate::story_executor::configure(&mut world);
+            }
             Ok(world)
         })
     };
@@ -112,10 +124,19 @@ pub fn preview(template: &str) -> Result<Value> {
             (world, Some(error.to_string()))
         }
     };
-    let mut seed = json!({"world":world,"system":system,"tools":tools::definitions(),"institution":definition,"name":name,"description":description,"runtime_available":error.is_none(),"runtime_error":error,"template":template});
+    let definitions = if review {
+        crate::story_executor::definitions()
+    } else {
+        tools::definitions()
+    };
+    let mut seed = json!({"world":world,"system":system,"tools":definitions,"institution":definition,"name":name,"description":description,"runtime_available":error.is_none(),"runtime_error":error,"template":template});
     if generative {
         seed["generation"] = example["generation"].clone();
         seed["config"] = example["config"].clone();
+        if review {
+            seed["config"]["actor_system_prompt"] = json!(system);
+            seed["config"]["actor_user_prompt"] = json!(task);
+        }
     }
     Ok(seed)
 }

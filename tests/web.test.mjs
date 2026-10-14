@@ -401,6 +401,30 @@ test("generated capabilities have a separate editable foundation and save bounde
   assert.equal(request.config.demo, false);
 });
 
+test("story review creates a separate template and preserves it when reopening", async () => {
+  const b = await browser();
+  const generation = {brief: "Review procurement", max_modules: 6, repair_attempts: 0};
+  const reviewSeed = {...institutionSeed, generation, config: {...config, demo: false, structured_actions: true},
+    world: {...seed.world, ontology: {...ontology, generation, stories: []}}};
+  b.respond((path) => path === "runs" ? [] : path === "institutions" ? {id: "review"} : reviewSeed);
+  await b.experiment("onto_review");
+  assert.ok(b.requests.some((r) => r.path === "institution-seed?template=story-review"));
+  assert.match(b.element("#director-policy").textContent, /execute Stories/);
+  b.element("#generation-brief").value = "Revised institutional review";
+  b.element("#generation-brief").oninput();
+  await b.element("#new").onclick();
+  const request = JSON.parse(b.requests.find((r) => r.path === "institutions").options.body);
+  assert.equal(request.template, "story-review");
+  assert.equal(request.generation.brief, "Revised institutional review");
+  const saved = detail("review");
+  saved.run.experiment = "onto_review";
+  saved.run.world = saved.frames[0].world = reviewSeed.world;
+  b.respond((path) => path === "runs" ? [{id: "review", experiment: "onto_review"}] : saved);
+  await b.select("review");
+  assert.equal(b.element("#experiment").value, "onto_review");
+  assert.match(b.element("#director-policy").textContent, /execute Stories/);
+});
+
 test("saved generated runs expose fixed generation settings and restore the correct new template", async () => {
   const b = await browser();
   const generation = {brief: "Saved company", max_modules: 12, repair_attempts: 2};

@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light">
+    <title>Run an experiment · Frontier</title>
+    <link rel="preload" href="/fonts/essonnes-text-regular.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="/run.css">
+    <script type="module" src="/run.js"></script>
+  </head>
+  <body>
+    <div id="run-page">
+      <header class="page-header">
+        <div class="toolbar">
+          <a class="wordmark serif" href="/run" aria-label="Frontier experiment runner">Frontier</a>
+          <div class="execution-controls" aria-label="Experiment execution">
+            <label class="experiment-field" for="experiment">
+              <span class="control-label">Experiment</span>
+              <select id="experiment" aria-label="Experiment" disabled>
+                <option value="">Loading experiments…</option>
+              </select>
+            </label>
+            <div class="execution-buttons">
+              <button id="run" class="primary-button" type="button" disabled>Run</button>
+              <button id="back" class="secondary-button" type="button" disabled>Step back</button>
+              <button id="step" class="secondary-button" type="button" disabled>Step</button>
+            </div>
+          </div>
+          <a class="configure-link" href="/">Configure experiments <span aria-hidden="true">↗</span></a>
+        </div>
+        <div class="experiment-heading">
+          <div class="experiment-title">
+            <h1 id="goal" class="serif">Run an experiment.</h1>
+            <p id="objective" class="objective" tabindex="0"></p>
+          </div>
+          <div class="run-summary">
+            <span id="status" class="status" role="status">Loading</span>
+            <span id="run-meta" class="run-meta"></span>
+          </div>
+        </div>
+        <p id="error" class="error-message" role="alert" hidden></p>
+      </header>
+
+      <main class="split" aria-label="Experiment execution and world state">
+        <section class="pane agent-pane" aria-labelledby="agent-heading">
+          <div class="pane-heading">
+            <h2 id="agent-heading">Agent</h2>
+            <span id="agent-meta" class="pane-meta">Actions and observations</span>
+          </div>
+          <div id="agent-state" class="agent-state" role="region" aria-label="Recorded agent state"></div>
+          <div class="pane-content agent-content" aria-label="Agent actions">
+            <div id="agent-card" class="stage agent-stage" role="region" aria-roledescription="carousel" aria-label="Recorded agent checkpoints">
+              <article class="stage-card story-card empty-state">
+                <div class="card-meta"><span>Execution</span><span class="number">—</span></div>
+                <h3 class="story-title serif">A place to watch<br>the work unfold.</h3>
+                <p class="story-outcome">Choose an experiment, then run it or take one step at a time.</p>
+                <p class="story-domain">Each action and its observation appear here.</p>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section class="pane world-pane" aria-labelledby="world-heading">
+          <div class="pane-heading">
+            <h2 id="world-heading"><span id="world-label">World</span> <span id="world-meta" class="pane-meta"></span></h2>
+            <div class="world-tabs" role="tablist" aria-label="World view">
+              <button id="facts-tab" type="button" role="tab" aria-selected="true" aria-controls="world-panel" data-view="facts">Facts</button>
+              <button id="tree-tab" type="button" role="tab" aria-selected="false" aria-controls="world-panel" tabindex="-1" data-view="tree">Tree</button>
+              <button id="domains-tab" type="button" role="tab" aria-selected="false" aria-controls="world-panel" tabindex="-1" data-view="domains">Circle pack</button>
+            </div>
+          </div>
+          <div id="world-panel" class="world-body pane-content" role="tabpanel" aria-labelledby="facts-tab" tabindex="0">
+            <div id="world-card" class="stage fact-stage">
+              <article class="stage-card fact-card empty-state">
+                <div class="card-meta"><span>World state</span><span>—</span></div>
+                <h3 class="fact-title serif">The world, as it stands.</h3>
+                <p class="fact-note">Saved facts and domains will appear when an experiment is selected.</p>
+              </article>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer class="page-footer" aria-label="Execution history">
+        <div class="replay-info">
+          <span id="position" class="replay-count">No experiment selected</span>
+          <input id="history" type="range" min="0" value="0" aria-label="Recorded checkpoint" disabled>
+          <button id="latest" class="latest-button" type="button" disabled>Latest <span aria-hidden="true">↗</span></button>
+        </div>
+        <div class="step-controls">
+          <button id="previous" type="button" disabled><span aria-hidden="true">←</span> Previous state</button>
+          <button id="next" type="button" disabled>Next state <span aria-hidden="true">→</span></button>
+        </div>
+      </footer>
+      <p id="announcement" class="sr-text" aria-live="polite" aria-atomic="true"></p>
+    </div>
+  </body>
+</html>

@@ -173,6 +173,104 @@ async fn main() -> Result<()> {
             get(|| async { Html(include_str!("../web/index.html")) }),
         )
         .route(
+            "/run",
+            get(|| async { Html(include_str!("../web/run.html")) }),
+        )
+        .route(
+            "/run/",
+            get(|| async { Html(include_str!("../web/run.html")) }),
+        )
+        .route(
+            "/run.js",
+            get(|| async {
+                (
+                    [("content-type", "text/javascript")],
+                    include_str!("../web/run.js"),
+                )
+            }),
+        )
+        .route(
+            "/run-view.js",
+            get(|| async {
+                (
+                    [("content-type", "text/javascript")],
+                    include_str!("../web/run-view.js"),
+                )
+            }),
+        )
+        .route(
+            "/run-carousel.js",
+            get(|| async {
+                (
+                    [("content-type", "text/javascript")],
+                    include_str!("../web/run-carousel.js"),
+                )
+            }),
+        )
+        .route(
+            "/run-world.js",
+            get(|| async {
+                (
+                    [("content-type", "text/javascript")],
+                    include_str!("../web/run-world.js"),
+                )
+            }),
+        )
+        .route(
+            "/run-structure.js",
+            get(|| async {
+                (
+                    [("content-type", "text/javascript")],
+                    include_str!("../web/run-structure.js"),
+                )
+            }),
+        )
+        .route(
+            "/vendor/d3-hierarchy.js",
+            get(|| async {
+                (
+                    [("content-type", "text/javascript")],
+                    include_str!("../web/vendor/d3-hierarchy.js"),
+                )
+            }),
+        )
+        .route(
+            "/run.css",
+            get(|| async {
+                (
+                    [("content-type", "text/css")],
+                    include_str!("../web/run.css"),
+                )
+            }),
+        )
+        .route(
+            "/fonts/essonnes-text-regular.woff2",
+            get(|| async {
+                (
+                    [("content-type", "font/woff2")],
+                    include_bytes!("../web/fonts/essonnes-text-regular.woff2").as_slice(),
+                )
+            }),
+        )
+        .route(
+            "/fonts/be-vietnam-pro-regular.woff2",
+            get(|| async {
+                (
+                    [("content-type", "font/woff2")],
+                    include_bytes!("../web/fonts/be-vietnam-pro-regular.woff2").as_slice(),
+                )
+            }),
+        )
+        .route(
+            "/fonts/be-vietnam-pro-medium.woff2",
+            get(|| async {
+                (
+                    [("content-type", "font/woff2")],
+                    include_bytes!("../web/fonts/be-vietnam-pro-medium.woff2").as_slice(),
+                )
+            }),
+        )
+        .route(
             "/app.js",
             get(|| async {
                 (
@@ -329,7 +427,7 @@ async fn create_institutions(
 ) -> Api<Run> {
     mutation(&headers)?;
     let harbor = match request.template.as_deref() {
-        None | Some("accounts" | "generative") => false,
+        None | Some("accounts" | "generative" | "story-review") => false,
         Some("harbor") => true,
         _ => return Err(anyhow::anyhow!("Unknown institution template").into()),
     };
@@ -339,7 +437,12 @@ async fn create_institutions(
         )
         .into());
     }
-    if request.template.as_deref() == Some("generative") && request.generation.is_none() {
+    let review = request.template.as_deref() == Some("story-review");
+    if matches!(
+        request.template.as_deref(),
+        Some("generative" | "story-review")
+    ) && request.generation.is_none()
+    {
         return Err(anyhow::anyhow!("The generative template requires a generation policy").into());
     }
     let generative = request.generation.is_some();
@@ -357,7 +460,9 @@ async fn create_institutions(
         .name
         .filter(|s| !s.trim().is_empty())
         .unwrap_or_else(|| {
-            if harbor {
+            if review {
+                "Onto · Story review"
+            } else if harbor {
                 "Onto · Harbor Works"
             } else if generative {
                 "Onto · Generated company"
@@ -382,12 +487,17 @@ async fn create_institutions(
         if let Some(policy) = request.generation {
             frontier::institutions::enable(world.ontology.as_mut().unwrap(), policy)?;
         }
+        if review {
+            frontier::story_executor::configure(&mut world);
+        }
         Ok::<_, anyhow::Error>(world)
     })
     .await
     .map_err(anyhow::Error::from)??;
     config.actor_system_prompt.get_or_insert_with(|| {
-        if harbor {
+        if review {
+            frontier::story_executor::SYSTEM
+        } else if harbor {
             experiments::bellwether::SYSTEM
         } else {
             tools::SYSTEM
@@ -398,7 +508,9 @@ async fn create_institutions(
     world.goal = config.actor_user_prompt.clone().unwrap();
     let mut run = Run::new(config)?;
     run.name = name;
-    run.experiment = Some(if harbor {
+    run.experiment = Some(if review {
+        experiments::Experiment::OntoReview
+    } else if harbor {
         experiments::Experiment::HarborOnto
     } else {
         experiments::Experiment::Institutions
@@ -879,7 +991,7 @@ fn demo_step(store: &mut Store, run: &mut Run) -> Result<()> {
     store.commit(
         run,
         "attempt",
-        &format!("{} / {}", action.kind, action.target),
+        &action_summary(&action),
         json!({"action":action,"scripted":true}),
     )?;
     if run.experiment.is_some() {
@@ -970,6 +1082,20 @@ fn demo_step(store: &mut Store, run: &mut Run) -> Result<()> {
     };
     finish_action(store, run, action, result)
 }
+fn action_summary(action: &Action) -> String {
+    if action.kind.starts_with("onto.") {
+        let inputs = action.inputs.as_ref().unwrap_or(&Value::Null);
+        let module = inputs["module"].as_str().unwrap_or("foundation");
+        let operation = inputs["story"]
+            .as_str()
+            .or_else(|| inputs["view"].as_str())
+            .unwrap_or("materialize");
+        format!("{} / {module} / {operation}", action.kind)
+    } else {
+        format!("{} / {}", action.kind, action.target)
+    }
+}
+
 fn finish_action(store: &mut Store, run: &mut Run, action: Action, result: Value) -> Result<()> {
     if run.world.business.is_some() {
         let before = serde_json::to_value(store.load(&run.id)?.world.business)?;
@@ -1010,7 +1136,7 @@ fn finish_action(store: &mut Store, run: &mut Run, action: Action, result: Value
     store.commit(
         run,
         kind,
-        &format!("{} / {}", action.kind, action.target),
+        &action_summary(&action),
         json!({"action":action,"result":result,"elapsed_seconds":run.world.tools.as_ref().map(|s|s.elapsed_seconds)}),
     )
 }
@@ -1071,7 +1197,7 @@ async fn step(app: &App, id: &str) -> Result<()> {
         store.commit(
             &mut run,
             "attempt",
-            &format!("{} / {}", action.kind, action.target),
+            &action_summary(&action),
             json!({"action":action}),
         )?;
     }
@@ -1396,8 +1522,12 @@ fn inference_request(run: &Run, role: &str, system: &str, input: &Value) -> Resu
             .ok_or_else(|| anyhow::anyhow!("Structured actions require general tools"))?
             .definitions;
         request["response_format"] = action_transport::response_format(definitions)?;
-        request["messages"][0]["content"] =
-            json!(format!("{system}\n{}", action_transport::INSTRUCTIONS));
+        let transport = if frontier::story_executor::enabled(&run.world) {
+            action_transport::STORY_INSTRUCTIONS
+        } else {
+            action_transport::INSTRUCTIONS
+        };
+        request["messages"][0]["content"] = json!(format!("{system}\n{transport}"));
     }
     if role == "memory" {
         // Reasoning consumes the same output allowance as the memory JSON.

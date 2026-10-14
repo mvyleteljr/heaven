@@ -23,6 +23,7 @@ pub enum Experiment {
     Recall,
     Institutions,
     HarborOnto,
+    OntoReview,
 }
 
 pub fn measure(run: &Run, events: &[crate::Event]) -> Value {
@@ -35,6 +36,34 @@ pub fn measure(run: &Run, events: &[crate::Event]) -> Value {
 }
 
 pub fn resolve(run: &Run, action: &Action) -> Result<Resolution> {
+    if crate::story_executor::enabled(&run.world)
+        && !crate::story_executor::allows(&run.world, action)
+    {
+        return Ok(Resolution::Denied);
+    }
+    if action.kind == "onto.expand" {
+        ensure!(
+            crate::story_executor::enabled(&run.world),
+            "Story executor is not enabled"
+        );
+        let target = crate::story_executor::expansion_target(action)?;
+        if exists(&run.world, &target) {
+            return Ok(Resolution::Existing);
+        }
+        return Ok(match crate::institutions::directive(run, &target) {
+            Some(directive) => Resolution::Missing {
+                directive,
+                // Reuse the existing compiler and publication boundary; no HTTP
+                // action or arbitrary URL is exposed to the review actor.
+                interface: Interface {
+                    tool: "http.request".into(),
+                    method: "GET".into(),
+                    url: target,
+                },
+            },
+            None => Resolution::Unsupported,
+        });
+    }
     if ["file.read", "file.write"].contains(&action.kind.as_str())
         && action
             .inputs
@@ -82,7 +111,9 @@ pub fn resolve(run: &Run, action: &Action) -> Result<Resolution> {
         Some(Experiment::Records) => records::directive(target),
         Some(Experiment::Bellwether) => bellwether::directive(target),
         Some(Experiment::Recall) => None,
-        Some(Experiment::Institutions) => crate::institutions::directive(run, target),
+        Some(Experiment::Institutions | Experiment::OntoReview) => {
+            crate::institutions::directive(run, target)
+        }
         Some(Experiment::HarborOnto) => None,
         None => None,
     };
@@ -151,7 +182,9 @@ pub fn context(run: &Run, target: &str) -> Result<Value> {
             }
             Ok(json!(committed))
         }
-        Some(Experiment::Institutions) => crate::institutions::context(run),
+        Some(Experiment::Institutions | Experiment::OntoReview) => {
+            crate::institutions::context(run)
+        }
         None | Some(Experiment::Recall | Experiment::HarborOnto) => {
             anyhow::bail!("No experiment construction policy")
         }

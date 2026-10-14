@@ -7,6 +7,131 @@ the architecture and historical audit results.
 
 ## Integrated local checkout, October 14
 
+### Pre-push verification, October 14
+
+The integrated worktree passes `scripts/dev check`, `scripts/dev check-onto`,
+and `scripts/dev check-jit`, including all 69 JavaScript tests. Verification used
+an isolated worktree compiler-cache volume to avoid interference from the original
+checkout. This supersedes the earlier residual-reservation test failure noted
+below; the assertion now tolerates floating-point rounding dust. These checks
+use deterministic fixtures and mock inference; no paid run was started.
+
+### Execution card view at `/run`
+
+`/run` uses the story-card design from `design/adversarial-domain-review` with
+real saved actions and world checkpoints. One selector opens a saved execution
+or previews a new template. Run or Step saves a new draft and sends the normal
+execution command. Run becomes Pause while continuous execution is active.
+Live model and dollar limits are visible; advanced configuration remains at `/`.
+The default is the free scripted Willow & Stem fixture. No execution starts
+just by selecting or reopening an experiment.
+
+Step back, the checkpoint slider, and Previous/Next state inspect saved history.
+While inspecting history, Step becomes Step forward and only navigates recorded
+states; at the latest checkpoint it executes one new action. Latest returns to
+following execution. Polling preserves the inspected checkpoint. Expansion,
+error, recovery and intervention checkpoints remain available. Facts and domains
+come from the selected snapshot; reads and refused commands do not animate an
+unchanged world. Action and result details retain the underlying evidence.
+
+Validation: all 58 JavaScript tests pass, including 35 new controller/projection
+tests; a real browser on a
+disposable, keyless Docker database verified Step (one action), Run (finished at
+five actions), and historical navigation with zero inference calls/charges.
+Formatting, Clippy and the Linux sandbox doctor pass. The full core check hits
+the existing `long_trajectory_compacts_constructs_recalls_and_reopens` assertion
+that compares a residual reservation of `2.7755575615628914e-17` with exact zero;
+it reproduces in isolation. The other 55 core tests pass when that test is
+excluded. Optional Onto suites were not rerun for this view. No saved execution
+was resumed and no paid inference was performed during this work.
+
+### Agent carousel and world structure views
+
+The follow-up UI lives in the managed `run-world-views/heaven` worktree on
+`codex/run-world-views`. Its local `.env` selects port **3001** and Compose project
+`heaven-run-world-views`; the original checkout stays on port **3000**. The worktree
+uses an independent data volume seeded by SQLite's online backup API, preserving
+all eight saved runs without sharing mutable execution state. Local Compose
+settings and the runtime remain ignored; they are not portable repository config.
+
+The Agent pane keeps adjacent checkpoints as small clickable previews and the
+selected checkpoint as a large scrollable card. Persistent cards grow and shrink
+between positions, with interrupted transitions retargeted from their current
+geometry and reduced-motion support. World cards reconcile existing fields in
+place without slide animations, preserving open details and tree branches.
+Facts, Tree and Circle pack use the same selected checkpoint. The tree exposes
+recorded domain containment; nested circles support keyboard/mouse drill-down,
+breadcrumb navigation and record inspection. Circle layout vendors ISC-licensed
+`d3-hierarchy` 3.1.2 locally, with no runtime CDN dependency.
+
+Validation: 62 JavaScript tests pass, including stable domain identity, hierarchy
+packing/containment, escaping, carousel boundaries and execution/history controls.
+Docker startup, Rust formatting and JavaScript syntax checks pass. Browser checks
+verify adjacent previews, historical fact changes with retained open details,
+retained tree branches, and keyboard circle navigation. This follow-up did not
+rerun the full Rust/Onto suites or perform any live inference.
+
+### Persistent agent budget in the Onto UI preview
+
+The left panel now emphasizes financial state rather than duplicating mandate,
+observations or memory. Onto Harbor's acting organization is matched by exact
+caller ownership to its `Firm` records; its modeled `freeCash` is the prominent
+available-to-spend amount, alongside cash, obligations and reserved funds
+(including contingency). It uses the selected checkpoint's snapshot. Accounts
+has no separately modeled agent spending budget and explicitly says so; its
+institutional balances are not reinterpreted as Ada's allowance. Flowers shows
+the customer's remaining allowance. The UI preview uses saved Onto Harbor run
+`9e36162e-387a-4035-8061-688abd965a2c` on port 3001, without resuming execution.
+All 65 JavaScript tests pass, including ownership isolation, zero/missing budget
+handling and historical budget projection. No new inference was performed.
+
+### State transitions
+
+Agent financial state and world projections share in-place animation: changed
+values fade, newly inserted sections fade/grow, and retained containers interpolate
+height. Disclosures expand/collapse with the same treatment. Rapid updates cancel
+only owned animations and retarget from their current rendered geometry; all
+heights return to natural layout on completion. Unchanged projections remain
+still, open details remain open across checkpoints, and reduced motion applies
+updates immediately. Large disclosures animate their enclosing box rather than
+every nested row. All 69 JavaScript tests pass, including growth, interruption,
+no-op and reduced-motion cases. Browser verification uses saved runs only.
+
+### Optional Onto Story review
+
+The separate **Onto · Story review** template exposes `onto.inspect`,
+`onto.execute`, `onto.expand`, and `finish` (plus history recall when rolling
+memory is enabled). It uses the existing Onto compiler, command receipts and
+module publication pipeline. Shell, general HTTP, file and hosting tools are
+not available in this profile, including for legacy actor output. Existing
+templates and saved runs retain their original interfaces.
+
+`onto.execute` takes the exact Story sentence, a stable `command_id`, optional
+module/object/about identifiers, and optional `participants_json` / `fields_json`
+JSON object strings. The runtime fixes caller identity and returns committed or
+refused results; observations include the Story, command ID and actual fact
+changes. Replaying an identical command ID returns its receipt without repeating
+the effect. The UI timeline names the executed Story.
+
+The initial review foundation has no operational Stories. `onto.expand` requests
+a capability under the editable generation brief, then the actor inspects and
+executes the compiled module. Generation publishes Ontolang source and initial
+facts; subsequent institutional transitions execute through Onto. The host still
+owns orchestration, clock, publication validation and inference accounting.
+Modules have isolated mutable state and an immutable shared foundation. This
+does not implement cross-module transactions or arbitrary source migration, and
+a generated addition cannot repair an existing module. Saving is free and paused;
+running the actor/generator uses the configured inference budget. No paid review
+trial has been performed as part of this addition.
+
+Verification passed: `scripts/dev check`, `scripts/dev check-onto`, and
+`scripts/dev check-jit`, including direct execution/refusal, idempotent replay,
+state persistence, disabled-tool enforcement, paused UI setup, and the mock
+actor-to-generator-to-Onto pipeline. These are deterministic checks, not evidence
+of autonomous live-review quality.
+
+### Existing integrated experiments
+
 Upstream through `e0bfdc5` is integrated with the authored Accounts and Onto
 Harbor templates. The original Rust Harbor remains available. The browser also
 offers **Onto · Generated company** as a separate paused-run template. Module

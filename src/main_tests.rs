@@ -1,6 +1,85 @@
 use super::*;
 
 #[tokio::test]
+#[ignore = "Requires optional Onto bundle; scripts/dev check-jit"]
+async fn jit_story_review_uses_direct_tools_and_existing_compiler_pipeline() -> Result<()> {
+    let (mut app, mut run) = app(Config {
+        demo: false,
+        structured_actions: true,
+        actor_settings: Some(frontier::ActorSettings {
+            provider: "openrouter".into(),
+            temperature: None,
+            max_tokens: 4096,
+            reasoning_effort: None,
+            endpoint: "mock".into(),
+        }),
+        dollar_limit: 2.0,
+        ..Config::default()
+    })?;
+    let preview = experiments::institutions::preview("story-review")?;
+    run.world = serde_json::from_value(preview["world"].clone())?;
+    run.experiment = Some(experiments::Experiment::OntoReview);
+    run.config.actor_system_prompt = Some(frontier::story_executor::SYSTEM.into());
+    app.store
+        .lock()
+        .unwrap()
+        .commit(&mut run, "seed", "Story review", json!({}))?;
+    let actions = vec![
+        json!({"kind":"onto.expand","inputs":{"module":"claims"}}),
+        json!({"kind":"onto.inspect","inputs":{"module":"claims","view":"model"}}),
+        json!({"kind":"onto.execute","inputs":{"module":"claims","command_id":"review-policy","story":"Operator expands Policy","object":"Policy:main"}}),
+        json!({"kind":"onto.expand","inputs":{"module":"claims"}}),
+        json!({"kind":"finish","inputs":{"message":"Policy changed from 10 to 50; receipt review-policy."}}),
+    ];
+    let count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let generated = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let (c, g) = (count.clone(), generated.clone());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    app.inference_url = format!("http://{}/completion", listener.local_addr()?);
+    let router = Router::new().route("/completion", post(move |Json(request): Json<Value>| {
+        let (c,g,actions) = (c.clone(),g.clone(),actions.clone());
+        async move {
+            let output = if request["messages"][0]["content"] == frontier::institutions::GENERATOR {
+                g.fetch_add(1,Ordering::SeqCst);
+                json!({"source":include_str!("../examples/jit/test-capability.onto"),"error":null})
+            } else {
+                assert!(!request["messages"][0]["content"].as_str().unwrap().contains("http.request"));
+                let schema = request["response_format"].to_string();
+                assert!(!schema.contains("shell.exec") && !schema.contains("http.request"));
+                typed_actor_output(&request, &actions[c.fetch_add(1,Ordering::SeqCst)])
+            };
+            Json(json!({"usage":{"cost":0.0001},"choices":[{"finish_reason":"stop","message":{"content":output.to_string()}}]}))
+        }
+    }));
+    let _mock = Mock(tokio::spawn(async move {
+        axum::serve(listener, router).await.unwrap();
+    }));
+    for _ in 0..5 {
+        step(&app, &run.id).await?;
+    }
+    let store = app.store.lock().unwrap();
+    let saved = store.load(&run.id)?;
+    assert_eq!(saved.status, "finished");
+    assert_eq!(saved.calls, 6);
+    assert_eq!(generated.load(Ordering::SeqCst), 1);
+    assert_eq!(saved.expansions, 1);
+    assert_eq!(saved.world.transcript[2]["result"]["committed"], true);
+    assert_eq!(
+        saved.world.transcript[2]["result"]["changes"][0]["after"]["fields"]["limit"],
+        50
+    );
+    assert_eq!(
+        store
+            .events(&run.id)?
+            .iter()
+            .filter(|e| e.kind == "published")
+            .count(),
+        1
+    );
+    Ok(())
+}
+
+#[tokio::test]
 async fn invalid_tool_input_returns_actionable_feedback_without_generation() -> Result<()> {
     let (mut app, mut run) = app(Config {
         demo: false,
@@ -119,7 +198,8 @@ async fn long_trajectory_compacts_constructs_recalls_and_reopens() -> Result<()>
     assert_eq!(saved.world.transcript.len(), saved.actions as usize);
     assert_eq!(saved.expansions, 1);
     assert!(saved.memory.as_ref().unwrap().revisions >= 15);
-    assert_eq!(saved.reserved, 0.0);
+    // Repeated floating-point reservations can leave sub-cent rounding dust.
+    assert!(saved.reserved.abs() < 1e-12);
     assert_eq!(
         saved.calls,
         saved.actions + saved.expansions + saved.memory.as_ref().unwrap().revisions

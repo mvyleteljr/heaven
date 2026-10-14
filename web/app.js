@@ -74,9 +74,9 @@ let institutionDefinition = null;
 let generationPolicy = null;
 let seedExperiment = null;
 const institutionTemplate = (experiment = $("#experiment").value) =>
-  ({ institutions: "accounts", harbor_onto: "harbor", institutions_generated: "generative" })[experiment] ?? null;
+  ({ institutions: "accounts", harbor_onto: "harbor", institutions_generated: "generative", onto_review: "story-review" })[experiment] ?? null;
 const experimentName = (experiment) =>
-  ({ bellwether: "Harbor Works", institutions: "Onto · Accounts", institutions_generated: "Onto · Generated company", harbor_onto: "Onto · Harbor Works", flowers: "Flowers for Friday" })[experiment] ?? "World trace";
+  ({ bellwether: "Harbor Works", institutions: "Onto · Accounts", institutions_generated: "Onto · Generated company", onto_review: "Onto · Story review", harbor_onto: "Onto · Harbor Works", flowers: "Flowers for Friday" })[experiment] ?? "World trace";
 const displayedExperiment = (run) => run.experiment === "institutions" &&
   (run.world.ontology?.generation || Object.keys(run.world.ontology?.modules ?? {}).length)
   ? "institutions_generated" : run.experiment ?? "flowers";
@@ -239,7 +239,7 @@ function modelEditor(definition) {
     ? "Saved model · read-only. Facts and receipts below follow the selected checkpoint."
     : institutionTemplate() === "harbor"
       ? "Authored Harbor Works template · read-only. Its counterparties and hosting behavior depend on this model."
-      : institutionTemplate() === "generative"
+      : ["generative", "story-review"].includes(institutionTemplate())
         ? "Edit the foundation before validating. It must contain no Stories and becomes read-only after saving. Generated capabilities can add their own facts and executable Stories."
       : "Edit source and caller before validating. The preview below uses the template's initial facts until you validate & save your edits. Money values in stored facts are integer cents.";
 }
@@ -276,6 +276,7 @@ function institutionWorld(ontology, elapsed) {
   return `<div class="institution-world"><div class="node root"><strong>Onto institution · day ${Math.floor((elapsed ?? 0) / 86400)}</strong><span>Caller: ${esc(ontology.definition.actor)} · ${instances.length} public records · ${receipts.length} command receipts</span></div>${balances.length ? `<div class="institution-balances">${balances.map((instance) => `<div class="node"><strong>${esc(instance.fields.name ?? instance.id)}</strong><span>Balance · ${money(instance.fields.balance)}</span></div>`).join("")}</div>` : ""}${Array.from(groups, ([type, records]) => `<details class="institution-facts" open><summary>${esc(type)} · ${records.length} records</summary>${records.map((instance) => `<div class="node"><strong>${esc(instance.id)}</strong><dl>${Object.entries(instance.fields ?? {}).map(([key, value]) => `<dt>${esc(key)}</dt><dd>${esc(valueText(value))}</dd>`).join("")}</dl></div>`).join("")}</details>`).join("")}<details open><summary>Model Stories · ${stories.length}</summary><p class="field-note">Each Story’s permissions still apply. Some Stories run only through trusted counterparties or service checks.</p>${stories.length ? `<ul>${stories.map((story) => `<li>${esc(story.story ?? story.id)}${story.participants?.length ? `<br><small>Participants: ${esc(story.participants.join(", "))}</small>` : ""}</li>`).join("")}</ul>` : "<p>No single-actor Stories are exposed.</p>"}</details><details open><summary>Command receipts · ${receipts.length}</summary>${receipts.length ? receipts.map(([key, receipt]) => `<details><summary>${esc(key)} · ${receipt.result?.committed === true ? "Committed" : receipt.result?.committed === false ? "Rejected" : "Recorded"}</summary><pre>${esc(pretty(receipt.result))}</pre></details>`).join("") : "<p>No commands yet.</p>"}</details></div>`;
 }
 function render() {
+  $("#run-view-link").href = id ? `/run?run=${encodeURIComponent(id)}` : "/run";
   const fs = frames();
   if (follow) selected = fs.length - 1;
   selected = Math.min(selected, fs.length - 1);
@@ -298,7 +299,8 @@ function render() {
     : seed.description ?? (seed.world.business ? "Original Harbor Works · Rust business simulation." : "");
   $("#system").textContent = data?.initial.actor_instructions ?? prompts.system;
   $("#director-policy").textContent = definition
-    ? generationSettings ? "Onto · generate executable capabilities as they are discovered; preserve the shared foundation"
+    ? (data?.run.experiment ?? $("#experiment").value) === "onto_review" ? "Onto · inspect, execute Stories and compile model additions; no shell or general HTTP"
+      : generationSettings ? "Onto · generate executable capabilities as they are discovered; preserve the shared foundation"
       : institutionTemplate() === "harbor" ? "Onto · authored commercial rules, hosting & counterparties" : "Onto · authored account rules & public facts"
     : frame.world.business
     ? "Bellwether · bounded counterparties & scheduled check-ins"
@@ -574,7 +576,7 @@ async function create() {
     throw Error("Load this experiment's seed before saving.");
   const template = institutionTemplate(experiment);
   const business = experiment === "bellwether" || template === "harbor";
-  const generative = template === "generative";
+  const generative = ["generative", "story-review"].includes(template);
   if (template && seed.runtime_available === false)
     throw Error("Configure the Onto runtime before validating this model.");
   if (generative) {
@@ -721,7 +723,7 @@ async function loadSeed(experiment) {
   if (experiment !== "flowers") $("#mode").value = "false";
 }
 $("#institution-source").oninput = () => {
-  if (!id && ["accounts", "generative"].includes(institutionTemplate()) && institutionDefinition)
+  if (!id && ["accounts", "generative", "story-review"].includes(institutionTemplate()) && institutionDefinition)
     institutionDefinition.source[$("#institution-file").value] = $("#institution-source").value;
 };
 $("#institution-file").onchange = () => {
@@ -729,12 +731,12 @@ $("#institution-file").onchange = () => {
 };
 for (const field of ["actor", "epoch"])
   $("#institution-" + field).oninput = () => {
-    if (!id && ["accounts", "generative"].includes(institutionTemplate()) && institutionDefinition)
+    if (!id && ["accounts", "generative", "story-review"].includes(institutionTemplate()) && institutionDefinition)
       institutionDefinition[field] = $("#institution-" + field).value;
   };
 for (const [field, property] of [["brief", "brief"], ["max-modules", "max_modules"], ["repairs", "repair_attempts"]])
   $("#generation-" + field).oninput = () => {
-    if (!id && institutionTemplate() === "generative" && generationPolicy)
+    if (!id && ["generative", "story-review"].includes(institutionTemplate()) && generationPolicy)
       generationPolicy[property] = field === "brief" ? $("#generation-" + field).value : Number($("#generation-" + field).value);
   };
 $("#experiment").onchange = () =>
