@@ -19,7 +19,7 @@
     },
     "action_limit": 80,
     "expansion_limit": 3,
-    "call_limit": 3,
+    "call_limit": 6,
     "dollar_limit": 0.5,
     "context_limit_bytes": 256000,
     "memory": null,
@@ -35,7 +35,8 @@
   },
   "generation": {
     "brief": "One company discovers capabilities on demand. For this infrastructure benchmark every requested capability must implement the following portable interface in its own namespace, using newly generated Onto source: Policy named main has int limit initially 10, constrained to 0..100. WorkItem has int amount greater than zero, and a policy reference; no WorkItem may exceed its Policy limit. The Story Operator creates WorkItem for Policy must create the requested item, linking the supplied Policy, with amount supplied by the caller. Operator expands Policy must change limit to 50. Model this as mutable organizational policy read by operating constraints, not a hardcoded acceptance of the example amount. Do not seed WorkItems. Use the existing Operator and Company from the immutable foundation. You may give each capability appropriate descriptions and additional non-conflicting domain detail. No foundation edits. No System stories. Do not write or refer to the benchmark evaluator.",
-    "max_modules": 128
+    "max_modules": 128,
+    "repair_attempts": 1
   },
   "steps": [
     {

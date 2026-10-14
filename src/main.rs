@@ -1153,20 +1153,65 @@ async fn construct(app: &App, id: &str, action: &Action) -> Result<()> {
         )?;
         request
     };
-    let response = infer(app, id, "world", construction::GENERATOR, json!(&request)).await?;
-    let proposal: construction::Proposal = serde_json::from_str(&response)?;
-    // Compilation may take seconds. Never hold the database lock or a Tokio
-    // worker while validating generated behavior. Recheck the basis at commit.
-    let mut candidate = app.store.lock().unwrap().load(id)?;
-    let validation_started = std::time::Instant::now();
-    let validation_request = request.clone();
-    let validation_proposal = proposal.clone();
-    candidate = tokio::task::spawn_blocking(move || {
-        construction::publish(&mut candidate, &validation_request, &validation_proposal)?;
-        Ok::<_, anyhow::Error>(candidate)
-    })
-    .await??;
-    let validation_ms = validation_started.elapsed().as_millis();
+    let executable = request.directive.requirements["functionality"] == "onto.module.v1";
+    let system = if executable {
+        frontier::institutions::GENERATOR
+    } else {
+        construction::GENERATOR
+    };
+    let repairs = if executable {
+        request.directive.requirements["repair_attempts"]
+            .as_u64()
+            .unwrap_or(0)
+            .min(2)
+    } else {
+        0
+    };
+    let mut input = json!(&request);
+    let mut attempt = 0u64;
+    let mut validation_ms = 0u128;
+    let (candidate, proposal) = loop {
+        // Provider failures stop immediately. Only local validation can request repair.
+        let response = infer(app, id, "world", system, input.clone()).await?;
+        let validation_started = std::time::Instant::now();
+        let validated: Result<_> = async {
+            let proposal: construction::Proposal = if executable {
+                frontier::institutions::proposal(&request, &response)?
+            } else {
+                serde_json::from_str(&response)?
+            };
+            // Compile outside the database lock and Tokio workers.
+            let mut candidate = app.store.lock().unwrap().load(id)?;
+            let validation_request = request.clone();
+            let validation_proposal = proposal.clone();
+            let candidate = tokio::task::spawn_blocking(move || {
+                construction::publish(&mut candidate, &validation_request, &validation_proposal)?;
+                Ok::<_, anyhow::Error>(candidate)
+            })
+            .await??;
+            Ok((candidate, proposal))
+        }
+        .await;
+        validation_ms += validation_started.elapsed().as_millis();
+        match validated {
+            Ok(value) => break value,
+            Err(error) => {
+                let mut store = app.store.lock().unwrap();
+                let mut run = store.load(id)?;
+                let repair = attempt < repairs && construction::basis(&run) == request.basis;
+                store.commit(&mut run, "construction_validation", "Generated proposal rejected",
+                    json!({"request_id":request.request_id,"attempt":attempt+1,"error":error.to_string(),"repair":repair}))?;
+                if !repair {
+                    return Err(error);
+                }
+                input["context"]["supporting"] = json!({
+                    "previous_response":response.chars().take(40000).collect::<String>(),
+                    "validation_error":error.to_string().chars().take(4000).collect::<String>()
+                });
+                attempt += 1;
+            }
+        }
+    };
     let mut store = app.store.lock().unwrap();
     let mut run = store.load(id)?;
     ensure!(
@@ -1178,7 +1223,7 @@ async fn construct(app: &App, id: &str, action: &Action) -> Result<()> {
         &mut run,
         "published",
         "Resource published",
-        json!({"proposal":proposal,"request_id":request.request_id,"latency_ms":started.elapsed().as_millis(),"validation_ms":validation_ms,"request_bytes":serde_json::to_vec(&request)?.len()}),
+        json!({"proposal":proposal,"request_id":request.request_id,"latency_ms":started.elapsed().as_millis(),"validation_ms":validation_ms,"generation_attempts":attempt+1,"request_bytes":serde_json::to_vec(&request)?.len()}),
     )?;
     Ok(())
 }
@@ -1315,6 +1360,9 @@ fn inference_request(run: &Run, role: &str, system: &str, input: &Value) -> Resu
     if role == "memory" {
         request["max_tokens"] = json!(4096);
         request["response_format"] = memory::response_format();
+    }
+    if role == "world" && input["directive"]["requirements"]["functionality"] == "onto.module.v1" {
+        request["response_format"] = frontier::institutions::response_format();
     }
     Ok(request)
 }

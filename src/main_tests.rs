@@ -636,10 +636,11 @@ async fn jit_actor_director_generator_execution_records_one_publication_and_reus
         let (c,g,actions)=(c.clone(),g.clone(),actions.clone());
         async move {
             let input:Value=serde_json::from_str(request["messages"][1]["content"].as_str().unwrap()).unwrap();
-            let output=if request["messages"][0]["content"]==construction::GENERATOR {
+            let output=if request["messages"][0]["content"]==frontier::institutions::GENERATOR {
                 g.fetch_add(1,Ordering::SeqCst);
                 assert!(!input.to_string().contains("PRIVATE-ACTOR-GOAL-CANARY"));
-                json!({"version":1,"request_id":input["request_id"],"basis":input["basis"],"result":{"status":"proposed","resources":[{"target":input["directive"]["target"],"operation":"create","initial_state":{"source":include_str!("../examples/jit/test-capability.onto")},"interface":input["interface"],"functionality":"onto.module.v1","dependencies":[frontier::ontology::ROOT]}]}})
+                assert_eq!(request["response_format"]["json_schema"]["strict"],true);
+                json!({"source":include_str!("../examples/jit/test-capability.onto"),"error":null})
             } else { actions[c.fetch_add(1,Ordering::SeqCst)].clone() };
             Json(json!({"usage":{"cost":0.0001},"choices":[{"finish_reason":"stop","message":{"content":output.to_string()}}]}))
         }
@@ -701,5 +702,89 @@ async fn unresolved_provider_endpoint_fails_before_reserving_or_sending() -> Res
     let events = store.events(&run.id)?;
     assert!(!events.iter().any(|e| e.kind == "inference"));
     assert_eq!(events.last().unwrap().evidence["phase"], "preflight");
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "Requires optional Onto bundle; scripts/dev check-jit"]
+async fn jit_validation_repair_is_bounded_atomic_and_never_retries_provider_failures() -> Result<()>
+{
+    for mode in ["repair", "exhaust", "provider", "disabled"] {
+        let (mut app, mut run) = app(Config {
+            demo: false,
+            call_limit: 10,
+            dollar_limit: 2.0,
+            ..Config::default()
+        })?;
+        let spec: Value = serde_json::from_str(include_str!("../examples/jit/live-proof.json"))?;
+        let mut institution = frontier::ontology::State::initialize(serde_json::from_value(
+            spec["institution"].clone(),
+        )?)?;
+        let mut policy: frontier::institutions::Policy =
+            serde_json::from_value(spec["generation"].clone())?;
+        policy.repair_attempts = if mode == "disabled" { 0 } else { 1 };
+        frontier::institutions::enable(&mut institution, policy)?;
+        run.world.tools = Some(tools::State::empty());
+        run.world.ontology = Some(institution);
+        run.experiment = Some(experiments::Experiment::Institutions);
+        app.store
+            .lock()
+            .unwrap()
+            .commit(&mut run, "seed", "Repair test", json!({}))?;
+        let initial_world = serde_json::to_value(&run.world)?;
+        let observed = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let requests = observed.clone();
+        let test_store = app.store.clone();
+        let id = run.id.clone();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+        app.inference_url = format!("http://{}/completion", listener.local_addr()?);
+        let router = Router::new().route("/completion", post(move |Json(request): Json<Value>| {
+            let (requests, test_store, id) = (requests.clone(), test_store.clone(), id.clone());
+            async move {
+                assert!(test_store.lock().unwrap().load(&id).unwrap().world.ontology.unwrap().modules.is_empty());
+                let input: Value = serde_json::from_str(request["messages"][1]["content"].as_str().unwrap()).unwrap();
+                let mut requests = requests.lock().unwrap();
+                let n = requests.len();
+                if n > 0 {
+                    assert_eq!(input["request_id"], requests[0]["request_id"]);
+                    assert_eq!(input["basis"], requests[0]["basis"]);
+                    assert!(input["context"]["supporting"]["validation_error"].as_str().is_some_and(|s| !s.is_empty()));
+                    assert!(input["context"]["supporting"]["previous_response"].as_str().unwrap().contains("initially"));
+                }
+                requests.push(input);
+                if mode == "provider" { return (StatusCode::PAYMENT_REQUIRED, Json(json!({"error":{"message":"test provider failure"}}))); }
+                let source = if mode == "repair" && n == 1 { include_str!("../examples/jit/test-capability.onto") } else { "object Policy\n  limit: int @required initially 10\n" };
+                (StatusCode::OK, Json(json!({"usage":{"cost":0.0001},"choices":[{"finish_reason":"stop","message":{"content":json!({"source":source,"error":null}).to_string()}}]})))
+            }
+        }));
+        let _mock = Mock(tokio::spawn(async move {
+            axum::serve(listener, router).await.unwrap();
+        }));
+        let action: Action = serde_json::from_value(spec["steps"][0]["action"].clone())?;
+        let result = construct(&app, &run.id, &action).await;
+        let store = app.store.lock().unwrap();
+        let saved = store.load(&run.id)?;
+        let events = store.events(&run.id)?;
+        assert_eq!(
+            observed.lock().unwrap().len(),
+            if ["provider", "disabled"].contains(&mode) {
+                1
+            } else {
+                2
+            }
+        );
+        assert_eq!(saved.expansions, 1);
+        if mode == "repair" {
+            result?;
+            assert_eq!(saved.world.ontology.unwrap().modules.len(), 1);
+            let publications: Vec<_> = events.iter().filter(|e| e.kind == "published").collect();
+            assert_eq!(publications.len(), 1);
+            assert_eq!(publications[0].evidence["generation_attempts"], 2);
+        } else {
+            assert!(result.is_err());
+            assert_eq!(serde_json::to_value(saved.world)?, initial_world);
+            assert!(!events.iter().any(|e| e.kind == "published"));
+        }
+    }
     Ok(())
 }

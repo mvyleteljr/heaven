@@ -7,7 +7,11 @@ Onto integration, start with [HANDOFF.md](HANDOFF.md). The current acceptance ta
 is just-in-time executable world generation: consistency, persistent revisits,
 generated operations, downstream effects of restructuring, and measured latency.
 The optional Onto module profile and its deterministic/live proof commands are
-documented in the handoff; live synthesis has not yet passed provider preflight.
+documented in the handoff. The October 14 live generator trial passed 34 checks
+across three executable modules at 2.87–3.19 seconds per publication; a separate
+process verified persisted receipts and fork execution. See the
+[full live evidence](examples/jit/live-result-2026-10-14.json). This is a scripted
+infrastructure benchmark, not autonomous business-transformation evidence.
 
 Frontier supports two research goals:
 

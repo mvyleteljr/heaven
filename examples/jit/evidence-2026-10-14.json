@@ -1,7 +1,7 @@
 {
   "version": 1,
   "date": "2026-10-14",
-  "claim": "Deterministic execution/persistence and bounded-growth evidence; live synthesis and live latency remain unverified.",
+  "claim": "Live generator passed 34 scripted behavior checks across three executable modules; cold-process persistence/fork verification and separate 64-module deterministic growth checks passed. Bounded evidence, not universal reliability.",
   "scope": {
     "generation": "New Onto source in previously unspecified modules, compiled by trusted interpreter",
     "restructuring": "Generated Stories change local policy state; not source/schema migration",
@@ -17,7 +17,15 @@
     "web_tests_passed": 6,
     "format": true,
     "clippy_warnings_denied": true,
-    "linux_sandbox_doctor": true
+    "linux_sandbox_doctor": true,
+    "bounded_validation_repair": true,
+    "optional_tests_passed": 6,
+    "verification_logs": [
+      "data/audits/jit-core-repair-2026-10-14.log",
+      "data/audits/jit-repair-2026-10-14.log",
+      "data/audits/jit-onto-2026-10-14.log",
+      "data/audits/jit-live-2026-10-14-e-cold.log"
+    ]
   },
   "growth": {
     "kind": "deterministic_fixture_not_live_generation",
@@ -568,11 +576,136 @@
           "failed_routing_step": null
         }
       ]
+    },
+    {
+      "file": "data/audits/jit-live-2026-10-14-c.json",
+      "passed": false,
+      "error": "missing field `interface` at line 1 column 1304",
+      "run_id": "1660691e-3af8-4430-8349-2e01dd0e62b1",
+      "source_sha256": "d5fdc89dbb3ff0b1d1debeb806c357a0b6651b108325b052f6bdb60678c2fd8d",
+      "checks_passed": 0,
+      "spending": {
+        "calls_including_inherited": 1,
+        "calls_recorded_on_this_branch": {
+          "world": 1
+        },
+        "charged_usd": 0.0010808,
+        "limit_usd": 0.5,
+        "uncertain_reserved_usd": 0.0
+      },
+      "integrity": {
+        "attempted_actions": 1,
+        "completed_observations": 1,
+        "events_contiguous": true,
+        "last_event_matches_run": true,
+        "memory_prefix_valid": null,
+        "unresolved_action_attempts": 0
+      },
+      "construction": {
+        "attempts_including_inherited": 1,
+        "published_on_this_branch": 0,
+        "rejected_on_this_branch": 1,
+        "timings": []
+      }
+    },
+    {
+      "file": "data/audits/jit-live-2026-10-14-d.json",
+      "passed": false,
+      "error": "Onto refused: \"generated.onto:3: cannot read \\\"initially 10\\\" after the attributes\"",
+      "run_id": "0644b14a-d410-47d6-bbd1-e531db10be7f",
+      "source_sha256": "1123f00dc9858ce78e32e9891edb38ee29c50720d03eb3935cf517507c7b2cde",
+      "checks_passed": 22,
+      "spending": {
+        "calls_including_inherited": 3,
+        "calls_recorded_on_this_branch": {
+          "world": 3
+        },
+        "charged_usd": 0.002474,
+        "limit_usd": 0.5,
+        "uncertain_reserved_usd": 0.0
+      },
+      "integrity": {
+        "attempted_actions": 23,
+        "completed_observations": 23,
+        "events_contiguous": true,
+        "last_event_matches_run": true,
+        "memory_prefix_valid": null,
+        "unresolved_action_attempts": 0
+      },
+      "construction": {
+        "attempts_including_inherited": 3,
+        "published_on_this_branch": 2,
+        "rejected_on_this_branch": 1,
+        "timings": [
+          {
+            "latency_ms": 2102,
+            "request_bytes": 5850,
+            "seq": 7,
+            "validation_ms": 107
+          },
+          {
+            "latency_ms": 2391,
+            "request_bytes": 5862,
+            "seq": 55,
+            "validation_ms": 113
+          }
+        ]
+      }
+    },
+    {
+      "file": "data/audits/jit-live-2026-10-14-e.json",
+      "passed": true,
+      "error": null,
+      "run_id": "19c945b6-a6da-419f-ad99-a0535ca9db79",
+      "source_sha256": "343785adced173abba14e2ae645b34364399e39743f324f334bdffa35ee67ca7",
+      "checks_passed": 34,
+      "spending": {
+        "calls_including_inherited": 3,
+        "calls_recorded_on_this_branch": {
+          "world": 3
+        },
+        "charged_usd": 0.0025504,
+        "limit_usd": 0.5,
+        "uncertain_reserved_usd": 0.0
+      },
+      "integrity": {
+        "attempted_actions": 34,
+        "completed_observations": 34,
+        "events_contiguous": true,
+        "last_event_matches_run": true,
+        "memory_prefix_valid": null,
+        "unresolved_action_attempts": 0
+      },
+      "construction": {
+        "attempts_including_inherited": 3,
+        "published_on_this_branch": 3,
+        "rejected_on_this_branch": 0,
+        "timings": [
+          {
+            "latency_ms": 3194,
+            "request_bytes": 5870,
+            "seq": 7,
+            "validation_ms": 111
+          },
+          {
+            "latency_ms": 2928,
+            "request_bytes": 5882,
+            "seq": 55,
+            "validation_ms": 110
+          },
+          {
+            "latency_ms": 2870,
+            "request_bytes": 5878,
+            "seq": 103,
+            "validation_ms": 108
+          }
+        ]
+      }
     }
   ],
   "authorized_total_usd": 2,
-  "cumulative_charged_plus_uncertain_reserved_usd": 0.692871525,
-  "live_spec_sha256": "f3a215f5ef1d4e36b5e21bec49c8e1d3a72910e75fada2b64ae8276b9d0f0fd5",
+  "cumulative_charged_plus_uncertain_reserved_usd": 0.698976725,
+  "live_spec_sha256": "0abecce522ad5d46949501b620b4f4296e2e3f007efeff6405d1674f2cb20ceb",
   "runtime_manifest": {
     "onto_revision": "454af8cb5bf9d6bef725df6a3294a5e54be37894",
     "bridge_sha256": "40b7d8ace8944f7c67593ec4bd17b9d0cbd8d4dbb8d4ced620205a6df7219765",
@@ -580,5 +713,26 @@
     "esbuild": "0.27.7",
     "toolchain_lock_sha256": "d172b9165cb6e61ad1da3be1efc0f21fb75e21b57512fdc0c480ffb30a75f3ab"
   },
-  "provider_diagnosis": "Read-only API inspection: configured key limit is not exhausted, but its account reports no funded credits. No key or account identifiers included."
+  "provider_diagnosis": "A privately replaced key works. Trials C/D exposed proposal-envelope and generated-syntax failures; frozen trial E passed without repairs.",
+  "successful_live_report": {
+    "file": "examples/jit/live-result-2026-10-14.json",
+    "sha256": "206b6f60c9568b7270eb0e278fb0c375a7a65c06f93b6347b1182212c440a95f",
+    "repair_attempts_allowed_per_module": 1,
+    "repair_attempts_used": 0,
+    "note": "Source-only strict response schema; host supplies proposal metadata. Failed proposals are retained in earlier trial reports."
+  },
+  "cold_verification": {
+    "checkpoint_hash": "fb867d1248127a951ef8e9fb1edb43dda7fca41523988a4cd8e284c06240ec30",
+    "cold_reopen": true,
+    "fork_execution": true,
+    "inference_calls": 0,
+    "modules": [
+      "claims-review",
+      "dispatch-routing",
+      "quality-control"
+    ],
+    "parent_unchanged": true,
+    "receipt_replay": true,
+    "run_id": "19c945b6-a6da-419f-ad99-a0535ca9db79"
+  }
 }

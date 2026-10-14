@@ -27,6 +27,7 @@ fn seeded() -> Result<Run> {
         institutions::Policy {
             brief: "A company with capabilities generated on demand.".into(),
             max_modules: 128,
+            repair_attempts: 0,
         },
     )?;
     run.world.ontology = Some(state);

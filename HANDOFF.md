@@ -17,11 +17,16 @@ The first executable expansion profile is implemented.
 `POST /api/institutions`; unlike the proof fixture, it does not prescribe the
 Policy/WorkItem vocabulary. It is a paid experiment configuration, not a run result.
 An institution can opt
-into `generation: {brief, max_modules}` when created. Its foundation has no
+into `generation: {brief, max_modules, repair_attempts?}` when created. Its foundation has no
 Stories and is read-only. A GET of `https://institutions.local/modules/NAME`
 constructs a missing module through the ordinary director/generator/publication
 pipeline. NAME is a previously unspecified capability, not an enumerated Rust
-handler. The generator supplies Onto source; the trusted interpreter compiles
+handler. The generator returns a strict source/error response; the host supplies proposal
+identity, scope and dependency metadata. Optional `repair_attempts` (default 0,
+maximum 2) permits bounded local-validation feedback, within the same run call
+and dollar limits. Failed candidates and diagnostics are retained; no candidate
+is published until validation succeeds. Provider errors are never retried.
+The generator supplies Onto source; the trusted interpreter compiles
 its objects, rules, formulas and Stories. `/model`, `/facts` and `/commands`
 operate on the resulting persisted module. Revisit does not regenerate it.
 
@@ -64,8 +69,8 @@ is a test fixture; it is never supplied to the live generator.
 trial: three capabilities, before/after policy probes, revisit checks and an
 explicit 20-second per-generation acceptance bound. Its stable Policy/WorkItem
 interface is a benchmark contract, not evidence of unconstrained business
-modeling or autonomous actor competence. It allows three inference calls with a
-$0.50 ceiling. This is a paid command; use new output/database filenames and
+modeling or autonomous actor competence. It allows six inference calls (one optional repair for each of three modules)
+with a $0.50 ceiling. This is a paid command; use new output/database filenames and
 confirm remaining authorization before another trial:
 
 ```sh
@@ -79,21 +84,58 @@ docker compose run --rm --no-deps -v "$PWD/data/audits:/proof" \
 The report path is exclusively reserved, preventing accidental duplicate runs.
 The database retains seed/config, generation requests/responses, accepted source,
 actions, assertions and costs. The final JSON exports those records and the
-build digest. A provider or assertion failure stops the trial without retry.
+build digest. A provider or assertion failure stops the trial without retry. Only local
+proposal-validation failures can use the explicitly configured repair allowance.
 A killed process can leave an incomplete report; inspect its database before
 any further calls. Use `frontier replay RUN_ID` against that same database to
 inspect persisted evidence without inference.
 
-Live attempts on October 14 have not generated a capability yet. The first
-uncovered a proof-runner endpoint-resolution bug (HTTP 404), now fixed; the
-second was refused by OpenRouter HTTP 402 because the key could afford only
-3,961 of the requested 4,096 output tokens. Each retains a $0.10 uncertain
-reservation. Combined charges/reservations, including earlier audits, are
-$0.692871525 against the original $2 authorization. No automatic retries or
-budget increases were made. Read-only provider diagnostics confirmed that the key limit is not exhausted,
-but the account associated with the configured key reports no funded credits.
-Await provider funding/workspace resolution before claiming live generation or
-live latency passes.
+**Live proof passed on October 14:** frozen trial E generated three executable
+modules and passed all 34 scripted assertions. Generation/publication took
+3,194 / 2,928 / 2,870 ms, below the authored 20-second bound. There were three
+provider calls, no repairs, no tool failures, complete action/observation pairs,
+and contiguous events. Charged $0.0025504, with no uncertain reservation for E.
+A separate process reopened the SQLite run, matched the exported checkpoint
+hash, replayed all three command receipts without duplicate effects, and executed
+new operations in forks while preserving the parent. That verification was free.
+
+The portable [full trial E report](examples/jit/live-result-2026-10-14.json)
+contains the exact config, requests/responses, generated source, observations,
+checks, audit and build digest. The [evidence index](examples/jit/evidence-2026-10-14.json)
+also preserves earlier failed-trial summaries and the separate deterministic
+64-module growth measurements. Local complete traces/SQLite files remain under
+`data/audits/jit-live-2026-10-14*.{json,sqlite}`; ignored databases are not in Git.
+
+Earlier attempts remain evidence: A exposed endpoint resolution (404); B was
+blocked by credits (402); C exposed proposal-envelope generation; D passed 22
+checks across two modules before the third source failed syntax validation.
+The source-only response protocol fixes C's unnecessary metadata burden; explicit
+bounded compiler feedback handles invalid proposals without weakening validation.
+Repair success, exhaustion, disabled mode and provider no-retry behavior are
+covered by deterministic transport tests. Trial E did not exercise live repair.
+Cumulative charges plus conservative uncertain reservations across all work are
+**$0.698976725 of the original $2 authorization**. The replacement key works.
+
+To verify the saved live database again without inference:
+
+```sh
+docker compose run --rm --no-deps -e OPENROUTER_API_KEY= \
+  -v "$PWD/data/audits:/proof" \
+  -e FRONTIER_SAVED_DB=/proof/jit-live-2026-10-14-e.sqlite \
+  -e FRONTIER_SAVED_PROOF=/app/examples/jit/live-result-2026-10-14.json \
+  frontier cargo test --locked --test jit_saved -- --ignored --nocapture
+```
+
+This establishes the five target properties in a narrow executable benchmark,
+with bounded growth supported by a separate deterministic test. It does not yet
+establish unconstrained creative modeling, autonomous reorganization quality,
+long-horizon model alignment, or live generation latency at large scale. Next:
+run the open-discovery configuration with authored outcome checks, then the
+separate memory/alignment experiment; keep actor outcomes distinct from runtime
+correctness.
+
+Final free verification: 48 core Rust tests, 6 optional Onto/JIT/saved-run
+tests, 6 web tests, formatting, Clippy and the Linux sandbox doctor passed.
 
 The immutable foundation/module boundary is an initial execution profile, not
 a change to Frontier's general purpose. The later company transformation and
