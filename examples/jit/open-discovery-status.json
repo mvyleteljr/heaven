@@ -140,17 +140,69 @@
           "seq": 143
         }
       ]
+    },
+    {
+      "condition": "C",
+      "run_id": "ea35c324-a67c-4943-abb5-3d9b687fad80",
+      "status": "error",
+      "spending": {
+        "calls_including_inherited": 3,
+        "calls_recorded_on_this_branch": {
+          "actor": 2,
+          "world": 1
+        },
+        "charged_usd": 0.026650375,
+        "limit_usd": 4.4,
+        "uncertain_reserved_usd": 0.0
+      },
+      "construction": {
+        "attempts_including_inherited": 1,
+        "published_on_this_branch": 0,
+        "rejected_on_this_branch": 1,
+        "timings": []
+      },
+      "integrity": {
+        "attempted_actions": 2,
+        "completed_observations": 2,
+        "events_contiguous": true,
+        "last_event_matches_run": true,
+        "memory_prefix_valid": true,
+        "unresolved_action_attempts": 0
+      },
+      "failures": [
+        {
+          "kind": "inference_failure",
+          "message": "Model output was truncated at the output token limit; increase max_tokens for a new run",
+          "phase": "output",
+          "role": "world",
+          "seq": 16
+        },
+        {
+          "kind": "construction_rejected",
+          "message": "Model output was truncated at the output token limit; increase max_tokens for a new run",
+          "phase": null,
+          "role": null,
+          "seq": 17
+        },
+        {
+          "kind": "error",
+          "message": "Model output was truncated at the output token limit; increase max_tokens for a new run",
+          "phase": null,
+          "role": null,
+          "seq": 19
+        }
+      ]
     }
   ],
   "active_launch": {
-    "run_id": "ea35c324-a67c-4943-abb5-3d9b687fad80",
-    "url": "http://127.0.0.1:3000/?run=ea35c324-a67c-4943-abb5-3d9b687fad80",
-    "started_at": "2026-10-14T16:44:53.816106+00:00",
-    "source_sha256": "72916051eb36defee870573b873922cf0beba65188124a3b0ef2cfceb70e4d8f",
+    "run_id": "38eb08c7-17c7-4d55-98c9-c64779853ec1",
+    "url": "http://127.0.0.1:3000/?run=38eb08c7-17c7-4d55-98c9-c64779853ec1",
+    "started_at": "2026-10-14T16:47:31.806542+00:00",
+    "source_sha256": "c1c94efc186017d049c35b7454ef82144f1dcdadd7c94c7500eadc82327047f1",
     "authorized_total_usd": 5,
-    "previous_attempts_accounted_usd": 0.54453,
-    "run_cap_usd": 4.4,
-    "condition": "GPT-4.1 actor; GPT-5.4 Mini generator with high reasoning; same pinned grammar and task",
+    "previous_attempts_accounted_usd": 0.571180375,
+    "run_cap_usd": 4.35,
+    "condition": "GPT-4.1 actor; GPT-5.4 Mini generator, medium reasoning, 16384 output tokens; same pinned grammar and task",
     "status": "running"
   }
 }

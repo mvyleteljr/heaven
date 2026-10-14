@@ -200,8 +200,8 @@ impl ActorSettings {
             "Temperature must be 0–2, or blank for provider default"
         );
         ensure!(
-            (1..=8192).contains(&self.max_tokens),
-            "Output token limit must be 1–8192 for this demo"
+            (1..=32768).contains(&self.max_tokens),
+            "Output token limit must be 1–32768"
         );
         ensure!(
             self.reasoning_effort

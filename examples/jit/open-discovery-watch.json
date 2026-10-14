@@ -1,5 +1,5 @@
 {
-  "name": "Open discovery \u00b7 device repair \u00b7 reasoning generator",
+  "name": "Open discovery \u00b7 device repair \u00b7 expanded reasoning budget",
   "config": {
     "demo": false,
     "structured_actions": true,
@@ -15,13 +15,13 @@
     "generator_settings": {
       "provider": "openrouter",
       "temperature": null,
-      "max_tokens": 8192,
-      "reasoning_effort": "high"
+      "max_tokens": 16384,
+      "reasoning_effort": "medium"
     },
     "action_limit": 100,
     "expansion_limit": 8,
     "call_limit": 160,
-    "dollar_limit": 4.4,
+    "dollar_limit": 4.35,
     "context_limit_bytes": 256000,
     "memory": {
       "recent_entries": 12,

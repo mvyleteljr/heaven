@@ -788,3 +788,29 @@ async fn jit_validation_repair_is_bounded_atomic_and_never_retries_provider_fail
     }
     Ok(())
 }
+
+#[tokio::test]
+async fn larger_reasoning_output_still_requires_full_cost_reservation() -> Result<()> {
+    let config = Config {
+        demo: false,
+        dollar_limit: 0.2,
+        generator_settings: Some(frontier::ActorSettings {
+            provider: "openrouter".into(),
+            temperature: None,
+            max_tokens: 32768,
+            reasoning_effort: Some("medium".into()),
+            endpoint: "mock".into(),
+        }),
+        ..Config::default()
+    };
+    config.validate()?;
+    let (app, run) = app(config)?;
+    let error = infer(&app, &run.id, "world", "system", json!({}))
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("maximum-cost reservation"));
+    let saved = app.store.lock().unwrap().load(&run.id)?;
+    assert_eq!(saved.calls, 0);
+    assert_eq!(saved.reserved, 0.0);
+    Ok(())
+}
