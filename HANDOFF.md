@@ -464,3 +464,5 @@ Validation: 50 core Rust tests, seven web tests, fmt, Clippy, Linux doctor,
 and five optional JIT tests (including disclosure boundary and 64-module
 fixture growth) passed. The first unpaid metadata-validation attempt returned
 an invalid provider response and saved no run; a verified retry created this run.
+
+Shutdown checkpoint: undisclosed-generation run 275c1d6e-0f0f-48e0-9b95-0b11c04c25a6 paused before laptop close; 17 observations saved, charged $0.3989505, reservation $0.0. Resume this saved run after Docker startup; do not create a duplicate or restart older conditions.
