@@ -496,7 +496,7 @@ test("batched generation replays blocked, world publication and retry without ex
   const advance = () => { const [id, fn] = timers.entries().next().value; timers.delete(id); fn(); };
   advance();
   assert.equal(b.state.selected, 2);
-  assert.equal(b.state.worldFocus, "world/module%3Aclaims");
+  assert.equal(b.state.worldFocus, "world", "publication keeps the Institution overview visible");
   assert.match(b.element("agent-card").innerHTML, /Capability ready · retrying/);
   advance();
   assert.equal(b.state.selected, 3);

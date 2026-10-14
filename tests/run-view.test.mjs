@@ -110,7 +110,8 @@ test("business, flower and generic tool worlds remain inspectable", () => {
   assert.match(renderWorld(frame("seed", {}, tools)), /persisted fact/);
   assert.match(renderWorld(frame("seed", {}, tools)), /notes.txt/);
   assert.match(renderWorld(frame("seed", {}, tools)), /<pre>hi<\/pre>/);
-  assert.match(renderWorld(frame("seed", {}, tools), null, "domains"), /records.local/);
+  assert.doesNotMatch(renderWorld(frame("seed", {}, tools), null, "domains"), /records.local|notes.txt/);
+  assert.match(renderWorld(frame("seed", {}, tools), null, "domains"), /Ontology|No domain concepts/);
 });
 
 test("an unsaved draft renders without saved run data", () => {
